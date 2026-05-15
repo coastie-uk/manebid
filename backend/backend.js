@@ -1537,8 +1537,14 @@ app.post("/validate-auction", async (req, res) => {
             }
                 // admin override to support slideshow function
             else if (row.status !== `setup` && !canBypassStateCheck) {
-                logFromRequest(req, logLevels.WARN, `Auction "${short_name}" not active (status: ${row.status})`);
-                return res.status(400).json({ valid: false, error: "This auction is not currently accepting submissions" });
+                logFromRequest(req, logLevels.INFO, `Auction "${short_name}" not active (status: ${row.status})`);
+                return res.status(400).json({
+                    valid: false,
+                    code: "not_accepting_submissions",
+                    error: "This auction is not currently accepting submissions",
+                    short_name: row.short_name,
+                    full_name: row.full_name
+                });
             }
 
             if (!canBypassStateCheck) logFromRequest(req, logLevels.INFO, `Auction "${short_name}" exists and accepting submissions`);

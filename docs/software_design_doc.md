@@ -704,6 +704,7 @@ Endpoints:
 - `POST /api/maintenance/auctions/create`
 - `POST /api/maintenance/auctions/update`
 - `POST /api/maintenance/auctions/delete`
+- `POST /api/maintenance/auctions/qr-code`
 - `POST /api/maintenance/auctions/purge-deleted-items`
 - `POST /api/maintenance/auctions/set-admin-state-permission`
 - `POST /api/auctions/update-status`
@@ -711,6 +712,7 @@ Endpoints:
 Data flow:
 
 - reads/writes `auctions`, `items`, `bidders`, `payments`, `payment_intents`
+- QR generation reads the auction `short_name`, validates a maintenance-supplied root URL, colours, size, and optional resource image, then returns an on-demand PNG without storing it
 - can permanently purge soft-deleted items by auction
 - maintains per-auction admin state-change policy
 
@@ -901,6 +903,7 @@ Maintenance:
 - `POST /api/maintenance/auctions/create`
 - `POST /api/maintenance/auctions/update`
 - `POST /api/maintenance/auctions/delete`
+- `POST /api/maintenance/auctions/qr-code`
 - `POST /api/maintenance/auctions/purge-deleted-items`
 - `POST /api/maintenance/auctions/set-admin-state-permission`
 - `GET /api/maintenance/users`

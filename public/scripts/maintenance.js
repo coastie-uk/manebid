@@ -32,9 +32,23 @@ const editAuctionShortNameInput = document.getElementById("edit-auction-short-na
 const editAuctionFullNameInput = document.getElementById("edit-auction-full-name");
 const editAuctionLogoSelect = document.getElementById("edit-auction-logo-select");
 const editAuctionAdminStatePermissionInput = document.getElementById("edit-auction-admin-state-permission");
-const editAuctionDeleteButton = document.getElementById("edit-auction-delete");
-const editAuctionResetButton = document.getElementById("edit-auction-reset");
 const editAuctionPurgeDeletedButton = document.getElementById("edit-auction-purge-deleted");
+const auctionQrModal = document.getElementById("auction-qr-modal");
+const closeAuctionQrModalButton = document.getElementById("close-auction-qr-modal");
+const cancelAuctionQrButton = document.getElementById("cancel-auction-qr");
+const previewAuctionQrButton = document.getElementById("preview-auction-qr");
+const downloadAuctionQrButton = document.getElementById("download-auction-qr");
+const qrAuctionTitle = document.getElementById("qr-auction-title");
+const qrAuctionShortNameInput = document.getElementById("qr-auction-short-name");
+const qrRootUrlInput = document.getElementById("qr-root-url");
+const qrFullUrlInput = document.getElementById("qr-full-url");
+const qrForegroundColourInput = document.getElementById("qr-foreground-colour");
+const qrBackgroundColourInput = document.getElementById("qr-background-colour");
+const qrCentreImageSelect = document.getElementById("qr-centre-image");
+const qrOutputSizeInput = document.getElementById("qr-output-size");
+const qrPreviewImage = document.getElementById("qr-preview-image");
+const qrPreviewPlaceholder = document.getElementById("qr-preview-placeholder");
+const qrModalStatus = document.getElementById("qr-modal-status");
 const popoutLogsButton = document.getElementById("popout-logs");
 const autoRefreshLogsCheckbox = document.getElementById("auto-refresh-logs");
 const integrityCheckButton = document.getElementById("integrity-check");
@@ -89,6 +103,47 @@ let selectedBackupId = null;
 let selectedBackupDetail = null;
 let lastManagedRestoreLog = "";
 let backupOperationBusy = false;
+let resourceImageFiles = [];
+let selectedQrAuction = null;
+let currentQrPreviewUrl = null;
+
+const AUCTION_ACTION_ICONS = Object.freeze({
+  qr: `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M4 4h6v6H4z"></path>
+      <path d="M14 4h6v6h-6z"></path>
+      <path d="M4 14h6v6H4z"></path>
+      <path d="M14 14h2v2h-2z"></path>
+      <path d="M18 14h2v2h-2z"></path>
+      <path d="M16 16h2v2h-2z"></path>
+      <path d="M14 18h2v2h-2z"></path>
+      <path d="M18 18h2v2h-2z"></path>
+    </svg>
+  `,
+  edit: `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M12 20h9"></path>
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+    </svg>
+  `,
+  reset: `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M3 12a9 9 0 1 0 3-6.7"></path>
+      <path d="M3 4v5h5"></path>
+      <path d="M12 7v6"></path>
+      <path d="M9 10l3 3 3-3"></path>
+    </svg>
+  `,
+  delete: `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M3 6h18"></path>
+      <path d="M8 6V4h8v2"></path>
+      <path d="M19 6l-1 14H6L5 6"></path>
+      <path d="M10 11v6"></path>
+      <path d="M14 11v6"></path>
+    </svg>
+  `
+});
 
 const BACKUP_ACTION_ICONS = Object.freeze({
   restore: `
@@ -282,6 +337,22 @@ function createBackupActionButton(icon, title, onClick, { danger = false, disabl
   button.disabled = disabled;
   button.addEventListener("click", (event) => {
     event.stopPropagation();
+    onClick();
+  });
+  return button;
+}
+
+function createAuctionActionButton(icon, title, onClick, { danger = false, disabled = false } = {}) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `auction-action-button${danger ? " danger" : ""}`;
+  button.title = title;
+  button.setAttribute("aria-label", title);
+  button.innerHTML = icon;
+  button.disabled = disabled;
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (button.disabled) return;
     onClick();
   });
   return button;
@@ -591,11 +662,6 @@ function openEditAuctionModal(auction) {
   editAuctionFullNameInput.value = auction.full_name || "";
   editAuctionLogoSelect.value = auction.logo || "default_logo.png";
   editAuctionAdminStatePermissionInput.checked = !!auction.admin_can_change_state;
-  editAuctionDeleteButton.disabled = Number(auction.item_count) > 0;
-  editAuctionDeleteButton.title = Number(auction.item_count) > 0 ? "Cannot delete auction with items" : "";
-  const canReset = auction.status === "archived" || auction.status === "setup";
-  editAuctionResetButton.disabled = !canReset;
-  editAuctionResetButton.title = canReset ? "" : "Only auctions in state setup or archived may be reset";
   const deletedCount = Number(auction.deleted_item_count || 0);
   if (editAuctionPurgeDeletedButton) {
     editAuctionPurgeDeletedButton.disabled = deletedCount <= 0;
@@ -613,6 +679,195 @@ function openEditAuctionModal(auction) {
 function closeEditAuctionModal() {
   if (!editAuctionModal) return;
   editAuctionModal.hidden = true;
+}
+
+function getDefaultQrRootUrl() {
+  return `${window.location.origin}/`;
+}
+
+function getQrUrlSuffix(shortName = qrAuctionShortNameInput?.value || "") {
+  return `?auction=${encodeURIComponent(shortName)}`;
+}
+
+function getQrRootUrlForDisplay() {
+  const rawValue = qrRootUrlInput?.value.trim() || "";
+  try {
+    const parsed = new URL(rawValue);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return rawValue;
+    parsed.search = "";
+    parsed.hash = "";
+    if (!parsed.pathname.endsWith("/")) parsed.pathname = `${parsed.pathname}/`;
+    return parsed.toString();
+  } catch {
+    return rawValue;
+  }
+}
+
+function syncQrUrlDisplay() {
+  if (!qrRootUrlInput || !qrFullUrlInput) return;
+  const shortName = qrAuctionShortNameInput?.value || "";
+  const suffix = getQrUrlSuffix(shortName);
+  qrFullUrlInput.value = `${getQrRootUrlForDisplay()}${suffix}`;
+  if (downloadAuctionQrButton) downloadAuctionQrButton.disabled = true;
+}
+
+function setQrModalStatus(message = "", type = "info") {
+  if (!qrModalStatus) return;
+  qrModalStatus.textContent = message;
+  qrModalStatus.dataset.state = type;
+}
+
+function revokeQrPreviewUrl() {
+  if (currentQrPreviewUrl) {
+    URL.revokeObjectURL(currentQrPreviewUrl);
+    currentQrPreviewUrl = null;
+  }
+}
+
+function resetQrPreview() {
+  revokeQrPreviewUrl();
+  if (qrPreviewImage) {
+    qrPreviewImage.hidden = true;
+    qrPreviewImage.removeAttribute("src");
+  }
+  if (qrPreviewPlaceholder) qrPreviewPlaceholder.hidden = false;
+  if (downloadAuctionQrButton) downloadAuctionQrButton.disabled = true;
+}
+
+function populateQrImageOptions(files = resourceImageFiles) {
+  if (!qrCentreImageSelect) return;
+  const currentValue = qrCentreImageSelect.value;
+  qrCentreImageSelect.innerHTML = "";
+
+  const noneOption = document.createElement("option");
+  noneOption.value = "";
+  noneOption.textContent = "None";
+  qrCentreImageSelect.appendChild(noneOption);
+
+  for (const file of files) {
+    const option = document.createElement("option");
+    option.value = file.name;
+    option.textContent = file.name;
+    qrCentreImageSelect.appendChild(option);
+  }
+
+  if (currentValue && files.some((file) => file.name === currentValue)) {
+    qrCentreImageSelect.value = currentValue;
+  }
+}
+
+function openAuctionQrModal(auction) {
+  if (!auctionQrModal || !auction) return;
+  selectedQrAuction = auction;
+  if (qrAuctionTitle) {
+    const fullName = auction.full_name || auction.short_name || "Selected auction";
+    qrAuctionTitle.textContent = fullName;
+  }
+  if (qrAuctionShortNameInput) qrAuctionShortNameInput.value = auction.short_name || "";
+  if (qrRootUrlInput) qrRootUrlInput.value = getDefaultQrRootUrl();
+  if (qrForegroundColourInput) qrForegroundColourInput.value = "#000000";
+  if (qrBackgroundColourInput) qrBackgroundColourInput.value = "#FFFFFF";
+  if (qrOutputSizeInput) qrOutputSizeInput.value = "512";
+  populateQrImageOptions();
+  if (qrCentreImageSelect) qrCentreImageSelect.value = "";
+  resetQrPreview();
+  setQrModalStatus("");
+  syncQrUrlDisplay();
+  openModal(auctionQrModal);
+  qrRootUrlInput?.focus();
+}
+
+function closeAuctionQrModal() {
+  closeModal(auctionQrModal);
+  selectedQrAuction = null;
+  resetQrPreview();
+}
+
+function getQrRequestPayload() {
+  return {
+    short_name: qrAuctionShortNameInput?.value || selectedQrAuction?.short_name || "",
+    root_url: qrRootUrlInput?.value || "",
+    foreground: qrForegroundColourInput?.value || "#000000",
+    background: qrBackgroundColourInput?.value || "#FFFFFF",
+    image: qrCentreImageSelect?.value || "",
+    size: Number(qrOutputSizeInput?.value || 512)
+  };
+}
+
+async function requestQrPngBlob() {
+  const res = await fetch(`${API}/maintenance/auctions/qr-code`, {
+    method: "POST",
+    headers: {
+      Authorization: token,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(getQrRequestPayload())
+  });
+
+  if (!res.ok) {
+    let message = "Failed to generate QR code.";
+    try {
+      const data = await res.json();
+      message = data.error || message;
+    } catch {
+      // Keep the fallback message for non-JSON failures.
+    }
+    throw new Error(message);
+  }
+
+  return res.blob();
+}
+
+async function previewAuctionQrCode() {
+  if (!selectedQrAuction) return;
+  previewAuctionQrButton.disabled = true;
+  if (downloadAuctionQrButton) downloadAuctionQrButton.disabled = true;
+  setQrModalStatus("Generating preview...", "info");
+
+  try {
+    const blob = await requestQrPngBlob();
+    revokeQrPreviewUrl();
+    currentQrPreviewUrl = URL.createObjectURL(blob);
+    if (qrPreviewImage) {
+      qrPreviewImage.src = currentQrPreviewUrl;
+      qrPreviewImage.hidden = false;
+    }
+    if (qrPreviewPlaceholder) qrPreviewPlaceholder.hidden = true;
+    if (downloadAuctionQrButton) downloadAuctionQrButton.disabled = false;
+    setQrModalStatus("Preview ready.", "success");
+  } catch (error) {
+    resetQrPreview();
+    setQrModalStatus(error.message || "Failed to generate QR code.", "error");
+    showMessage(error.message || "Failed to generate QR code.", "error");
+  } finally {
+    previewAuctionQrButton.disabled = false;
+  }
+}
+
+async function downloadAuctionQrCode() {
+  if (!selectedQrAuction) return;
+  downloadAuctionQrButton.disabled = true;
+  setQrModalStatus("Preparing PNG download...", "info");
+
+  try {
+    const blob = await requestQrPngBlob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const safeShortName = String(selectedQrAuction.short_name || "auction").replace(/[^a-z0-9_-]/gi, "_");
+    anchor.href = url;
+    anchor.download = `auction-${safeShortName}-qr.png`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    setQrModalStatus("PNG downloaded.", "success");
+    showMessage("QR code downloaded", "success");
+  } catch (error) {
+    setQrModalStatus(error.message || "Failed to download QR code.", "error");
+    showMessage(error.message || "Failed to download QR code.", "error");
+  } finally {
+    downloadAuctionQrButton.disabled = false;
+  }
 }
 
 async function deleteAuctionById(auctionId, auctionFullName = "") {
@@ -681,6 +936,32 @@ async function resetAuctionById(auctionId, auctionFullName = "") {
 
   showMessage(`Reset auction ${auctionId}: Removed ${data.deleted.items} items, ${data.deleted.bidders} bidders, ${data.deleted.payments} payments`, "success");
   return true;
+}
+
+async function deleteAuctionFromRow(auction) {
+  const auctionId = Number(auction?.id);
+  if (!auctionId) {
+    showMessage("Missing auction ID.", "error");
+    return;
+  }
+
+  const deleted = await deleteAuctionById(auctionId, auction.full_name || "");
+  if (deleted) {
+    refreshAuctions();
+  }
+}
+
+async function resetAuctionFromRow(auction) {
+  const auctionId = Number(auction?.id);
+  if (!auctionId) {
+    showMessage("Missing auction ID.", "error");
+    return;
+  }
+
+  const reset = await resetAuctionById(auctionId, auction.full_name || "");
+  if (reset) {
+    refreshAuctions();
+  }
 }
 
 async function purgeDeletedItemsByAuctionId(auctionId) {
@@ -2244,11 +2525,11 @@ try {
     // removed -->     <td style="text-align:center;"><input type="checkbox" ${auction.is_active ? "checked" : ""}></td>
 
     row.innerHTML = `
-    <td>${auction.id}</td>
-    <td><a href="${baseUrl}/?auction=${encodeURIComponent(auction.short_name)}" target="_blank">${auction.short_name}</a></td>
-    <td>${auction.full_name}</td>
+    <td>${escapeHtml(auction.id)}</td>
+    <td><a href="${baseUrl}/?auction=${encodeURIComponent(auction.short_name)}" target="_blank">${escapeHtml(auction.short_name)}</a></td>
+    <td>${escapeHtml(auction.full_name)}</td>
     <td style="text-align:center;"><img src="${logoSrc}" alt="Logo" style="height:40px; max-width:100px; object-fit:contain;"></td>
-    <td>${auction.item_count}${Number(auction.deleted_item_count || 0) > 0 ? ` (${auction.deleted_item_count} deleted)` : ""}</td>
+    <td>${escapeHtml(auction.item_count)}${Number(auction.deleted_item_count || 0) > 0 ? ` (${escapeHtml(auction.deleted_item_count)} deleted)` : ""}</td>
     <td> <select class="status-select" data-id="${auction.id}">
         ${statusOptions.map(opt =>
       `<option value="${opt}" ${auction.status === opt ? "selected" : ""}>${opt}</option>`
@@ -2256,13 +2537,34 @@ try {
         </select>
     </td>
     <td>${allowAdmin ? "Yes" : "No"}</td>
-    <td><button class="edit-auction-btn" data-id="${auction.id}">Edit</button></td>
+    <td><div class="auction-action-row"></div></td>
   `;
 
-    const editBtn = row.querySelector(".edit-auction-btn");
-    editBtn.onclick = () => {
-      openEditAuctionModal(auction);
-    };
+    const actionRow = row.querySelector(".auction-action-row");
+    const canReset = auction.status === "archived" || auction.status === "setup";
+    const canDelete = Number(auction.item_count) <= 0;
+    actionRow.appendChild(createAuctionActionButton(
+      AUCTION_ACTION_ICONS.qr,
+      "Generate auction URL QR code",
+      () => openAuctionQrModal(auction)
+    ));
+    actionRow.appendChild(createAuctionActionButton(
+      AUCTION_ACTION_ICONS.edit,
+      "Edit auction",
+      () => openEditAuctionModal(auction)
+    ));
+    actionRow.appendChild(createAuctionActionButton(
+      AUCTION_ACTION_ICONS.reset,
+      canReset ? "Reset auction" : "Only auctions in state setup or archived may be reset",
+      () => resetAuctionFromRow(auction),
+      { danger: true, disabled: !canReset }
+    ));
+    actionRow.appendChild(createAuctionActionButton(
+      AUCTION_ACTION_ICONS.delete,
+      canDelete ? "Delete auction" : "Cannot delete auction with items",
+      () => deleteAuctionFromRow(auction),
+      { danger: true, disabled: !canDelete }
+    ));
 
     tableBody.appendChild(row);
   });
@@ -2366,8 +2668,6 @@ saveEditAuctionButton?.addEventListener("click", async () => {
   }
 
   saveEditAuctionButton.disabled = true;
-  editAuctionDeleteButton.disabled = true;
-  editAuctionResetButton.disabled = true;
   if (editAuctionPurgeDeletedButton) editAuctionPurgeDeletedButton.disabled = true;
 
   try {
@@ -2404,45 +2704,7 @@ saveEditAuctionButton?.addEventListener("click", async () => {
     showMessage(error?.message || "Failed to update auction", "error");
   } finally {
     saveEditAuctionButton.disabled = false;
-    editAuctionDeleteButton.disabled = Number(editAuctionModal?.dataset.auctionItemCount || 0) > 0;
-    editAuctionResetButton.disabled = !["archived", "setup"].includes(editAuctionModal?.dataset.auctionStatus || "");
     if (editAuctionPurgeDeletedButton) editAuctionPurgeDeletedButton.disabled = Number(editAuctionModal?.dataset.auctionDeletedItemCount || 0) <= 0;
-  }
-});
-
-editAuctionDeleteButton?.addEventListener("click", async () => {
-  const auctionId = Number(editAuctionIdInput.value);
-  if (!auctionId) {
-    showMessage("Missing auction ID.", "error");
-    return;
-  }
-
-  editAuctionDeleteButton.disabled = true;
-  try {
-    const deleted = await deleteAuctionById(auctionId, editAuctionModal?.dataset.auctionFullName || "");
-    if (!deleted) return;
-    closeEditAuctionModal();
-    refreshAuctions();
-  } finally {
-    editAuctionDeleteButton.disabled = Number(editAuctionModal?.dataset.auctionItemCount || 0) > 0;
-  }
-});
-
-editAuctionResetButton?.addEventListener("click", async () => {
-  const auctionId = Number(editAuctionIdInput.value);
-  if (!auctionId) {
-    showMessage("Missing auction ID.", "error");
-    return;
-  }
-
-  editAuctionResetButton.disabled = true;
-  try {
-    const reset = await resetAuctionById(auctionId, editAuctionModal?.dataset.auctionFullName || "");
-    if (!reset) return;
-    closeEditAuctionModal();
-    refreshAuctions();
-  } finally {
-    editAuctionResetButton.disabled = !["archived", "setup"].includes(editAuctionModal?.dataset.auctionStatus || "");
   }
 });
 
@@ -2463,6 +2725,25 @@ editAuctionPurgeDeletedButton?.addEventListener("click", async () => {
     editAuctionPurgeDeletedButton.disabled = Number(editAuctionModal?.dataset.auctionDeletedItemCount || 0) <= 0;
   }
 });
+
+closeAuctionQrModalButton?.addEventListener("click", closeAuctionQrModal);
+cancelAuctionQrButton?.addEventListener("click", closeAuctionQrModal);
+previewAuctionQrButton?.addEventListener("click", previewAuctionQrCode);
+downloadAuctionQrButton?.addEventListener("click", downloadAuctionQrCode);
+[qrRootUrlInput, qrForegroundColourInput, qrBackgroundColourInput, qrCentreImageSelect, qrOutputSizeInput]
+  .filter(Boolean)
+  .forEach((input) => {
+    input.addEventListener("input", () => {
+      syncQrUrlDisplay();
+      resetQrPreview();
+      setQrModalStatus("");
+    });
+    input.addEventListener("change", () => {
+      syncQrUrlDisplay();
+      resetQrPreview();
+      setQrModalStatus("");
+    });
+  });
 
 integrityCheckButton?.addEventListener("click", checkIntegrity);
 integrityFixButton?.addEventListener("click", fixIntegrity);
@@ -2774,13 +3055,15 @@ async function loadPptxImageList() {
   const data = await res.json();
   const tableBody = document.getElementById("pptx-image-table-body");
   tableBody.innerHTML = "";
+  resourceImageFiles = Array.isArray(data.files) ? data.files : [];
+  populateQrImageOptions(resourceImageFiles);
 
-  if (!data.files || data.files.length === 0) {
+  if (!resourceImageFiles.length) {
     tableBody.innerHTML = `<tr><td colspan="3">No image resources stored.</td></tr>`;
     return;
   }
 
-  for (const file of data.files) {
+  for (const file of resourceImageFiles) {
     const tr = document.createElement("tr");
 
     const nameTd = document.createElement("td");
@@ -2851,8 +3134,8 @@ async function loadPptxImageList() {
     editAuctionLogoSelect.appendChild(editDefaultOption);
   }
 
-  if (data.files && data.files.length > 0) {
-    for (const file of data.files) {
+  if (resourceImageFiles.length > 0) {
+    for (const file of resourceImageFiles) {
       const option = document.createElement("option");
       option.value = file.name;
       option.textContent = file.name;

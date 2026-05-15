@@ -42,6 +42,7 @@ All operator pages use a shared session. After signing in once, you can move bet
 
 * The auction name is used in operator screens and public-facing headers.
 * The URL tag is used to open the public page directly, for example `index.html?auction=[tag]`. This is intended for QR codes and similar uses.
+* Use the QR action in the **Existing Auctions** table to generate a PNG QR code for the public `?auction=[tag]` URL.
 * The URL tag is case-insensitive and cannot contain spaces.
 * If you want a custom logo or image on the public page, upload it first in **Image Management**, then select it when creating or editing the auction.
 

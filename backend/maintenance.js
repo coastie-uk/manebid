@@ -21,6 +21,7 @@ const { validateAndNormalizeSlipConfig } = require('./slip-config');
 const { sanitiseText } = require('./middleware/sanitiseText');
 const upload = multer({ dest: UPLOAD_DIR });
 const sharp = require("sharp");
+const QRCode = require("qrcode");
 const db = require('./db');
 const archiver = require("archiver");
 const logFilePath = path.join(LOG_DIR, LOG_NAME);
@@ -592,6 +593,128 @@ function validateAuctionLogo(logo) {
   }
 
   return { value: requestedLogo };
+}
+
+function normaliseQrRootUrl(rootUrl) {
+  const rawValue = typeof rootUrl === "string" ? rootUrl.trim() : "";
+  if (!rawValue) {
+    return { error: "Missing root URL." };
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(rawValue);
+  } catch {
+    return { error: "Root URL must be a valid http or https URL." };
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return { error: "Root URL must use http or https." };
+  }
+
+  parsed.search = "";
+  parsed.hash = "";
+  if (!parsed.pathname.endsWith("/")) {
+    parsed.pathname = `${parsed.pathname}/`;
+  }
+
+  return { value: parsed.toString() };
+}
+
+function normaliseQrHexColour(value, fallback, fieldName) {
+  const rawValue = typeof value === "string" && value.trim() ? value.trim() : fallback;
+  if (!/^#[0-9a-fA-F]{6}$/.test(rawValue)) {
+    return { error: `${fieldName} must be a 6-digit hex colour, for example #000000.` };
+  }
+
+  return { value: rawValue.toUpperCase() };
+}
+
+function normaliseQrSize(value) {
+  const size = value === undefined || value === null || value === ""
+    ? 512
+    : Number(value);
+  if (!Number.isInteger(size) || size < 128 || size > 2048) {
+    return { error: "QR size must be an integer between 128 and 2048 pixels." };
+  }
+
+  return { value: size };
+}
+
+function validateQrCentreImage(image) {
+  const requestedImage = typeof image === "string" ? image.trim() : "";
+  if (!requestedImage) {
+    return { value: null };
+  }
+
+  const safeName = sanitiseText(requestedImage, 255).trim();
+  if (!safeName || safeName !== requestedImage || safeName.includes("/") || safeName.includes("\\") || safeName.includes("..")) {
+    return { error: "Invalid centre image selection." };
+  }
+
+  const imagePath = path.resolve(CONFIG_IMG_DIR, safeName);
+  const resourceRoot = path.resolve(CONFIG_IMG_DIR);
+  if (!imagePath.startsWith(`${resourceRoot}${path.sep}`)) {
+    return { error: "Invalid centre image selection." };
+  }
+
+  if (!fs.existsSync(imagePath)) {
+    return { error: "Selected centre image does not exist." };
+  }
+
+  const ext = path.extname(safeName).toLowerCase();
+  if (!allowedExtensions.includes(ext)) {
+    return { error: "Selected centre image is not a supported image." };
+  }
+
+  return { value: { filename: safeName, path: imagePath } };
+}
+
+function buildAuctionQrUrl(rootUrl, shortName) {
+  const suffix = `?auction=${encodeURIComponent(shortName)}`;
+  return `${rootUrl}${suffix}`;
+}
+
+async function renderAuctionQrPng({ url, foreground, background, size, centreImage }) {
+  const qrBuffer = await QRCode.toBuffer(url, {
+    type: "png",
+    errorCorrectionLevel: "H",
+    margin: 2,
+    width: size,
+    color: {
+      dark: foreground,
+      light: background
+    }
+  });
+
+  if (!centreImage) {
+    return qrBuffer;
+  }
+
+  const imageSize = Math.max(38, Math.round(size * 0.22));
+  const padSize = Math.max(imageSize + 6, Math.round(size * 0.24));
+  const centreBuffer = await sharp({
+    create: {
+      width: padSize,
+      height: padSize,
+      channels: 4,
+      background
+    }
+  })
+    .composite([{
+      input: await sharp(centreImage.path)
+        .resize(imageSize, imageSize, { fit: "inside", withoutEnlargement: true })
+        .png()
+        .toBuffer(),
+      gravity: "center"
+    }])
+    .png()
+    .toBuffer();
+
+  return sharp(qrBuffer)
+    .composite([{ input: centreBuffer, gravity: "center" }])
+    .png()
+    .toBuffer();
 }
 
 // Ensure PPTX_CONFIG_DIR exists and has default config files (removes a manual setup step)
@@ -2570,6 +2693,69 @@ router.post("/auctions/update", (req, res) => {
   } catch (err) {
     logFromRequest(req, logLevels.ERROR, `Auction update error: ${err?.stack || err.message}`);
     return res.status(500).json({ error: "Internal error" });
+  }
+});
+
+//--------------------------------------------------------------------------
+// POST /auctions/qr-code
+// API to generate a static public URL QR code for an auction
+//--------------------------------------------------------------------------
+
+router.post("/auctions/qr-code", async (req, res) => {
+  const shortNameResult = normaliseAuctionShortName(req.body?.short_name);
+  if (shortNameResult.error) {
+    return res.status(400).json({ error: shortNameResult.error });
+  }
+
+  const rootUrlResult = normaliseQrRootUrl(req.body?.root_url);
+  if (rootUrlResult.error) {
+    return res.status(400).json({ error: rootUrlResult.error });
+  }
+
+  const foregroundResult = normaliseQrHexColour(req.body?.foreground, "#000000", "Foreground colour");
+  if (foregroundResult.error) {
+    return res.status(400).json({ error: foregroundResult.error });
+  }
+
+  const backgroundResult = normaliseQrHexColour(req.body?.background, "#FFFFFF", "Background colour");
+  if (backgroundResult.error) {
+    return res.status(400).json({ error: backgroundResult.error });
+  }
+
+  const sizeResult = normaliseQrSize(req.body?.size);
+  if (sizeResult.error) {
+    return res.status(400).json({ error: sizeResult.error });
+  }
+
+  const centreImageResult = validateQrCentreImage(req.body?.image);
+  if (centreImageResult.error) {
+    return res.status(400).json({ error: centreImageResult.error });
+  }
+
+  const auction = db.prepare("SELECT id, short_name FROM auctions WHERE short_name = ?").get(shortNameResult.value);
+  if (!auction) {
+    return res.status(404).json({ error: "Auction not found." });
+  }
+
+  try {
+    const url = buildAuctionQrUrl(rootUrlResult.value, auction.short_name);
+    const png = await renderAuctionQrPng({
+      url,
+      foreground: foregroundResult.value,
+      background: backgroundResult.value,
+      size: sizeResult.value,
+      centreImage: centreImageResult.value
+    });
+
+    const safeShortName = auction.short_name.replace(/[^a-z0-9_-]/gi, "_");
+    logFromRequest(req, logLevels.INFO, `Generated QR code for auction ${auction.id} ${auction.short_name}`);
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Content-Disposition", `attachment; filename="auction-${safeShortName}-qr.png"`);
+    res.setHeader("Cache-Control", "no-store");
+    return res.send(png);
+  } catch (err) {
+    logFromRequest(req, logLevels.ERROR, `QR code generation error: ${err?.stack || err.message}`);
+    return res.status(500).json({ error: "Failed to generate QR code." });
   }
 });
 

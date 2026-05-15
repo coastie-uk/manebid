@@ -132,7 +132,7 @@
                         <th>Items</th>
                         <th>Status</th>
                         <th>Admin Can Set State</th>
-                        <th>Edit</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody id="auction-table-body"></tbody>
@@ -584,6 +584,57 @@
 
       <div id="output"></div>
 
+      <div id="auction-qr-modal" class="app-modal" hidden>
+        <div class="app-modal-card app-modal-card--wide">
+          <div class="app-modal-header">
+            <div>
+              <h3>Generate Auction QR Code</h3>
+              <p id="qr-auction-title">Selected auction</p>
+            </div>
+            <button id="close-auction-qr-modal" type="button" class="app-modal-close" aria-label="Close QR code dialog">Close</button>
+          </div>
+
+          <input type="hidden" id="qr-auction-short-name" />
+          <div class="qr-url-fields">
+            <label for="qr-root-url">Root URL</label>
+            <input type="url" id="qr-root-url" placeholder="https://example.com/" />
+
+            <label for="qr-full-url">Generated URL</label>
+            <input type="text" id="qr-full-url" readonly />
+          </div>
+
+          <div class="qr-modal-grid">
+            <form id="auction-qr-form" class="maintenance-form-grid">
+              <label for="qr-foreground-colour">Foreground colour</label>
+              <input type="text" id="qr-foreground-colour" value="#000000" maxlength="7" />
+
+              <label for="qr-background-colour">Background colour</label>
+              <input type="text" id="qr-background-colour" value="#FFFFFF" maxlength="7" />
+
+              <label for="qr-centre-image">Centre image</label>
+              <select id="qr-centre-image"></select>
+
+              <label for="qr-output-size">Output size (px)</label>
+              <input type="number" id="qr-output-size" min="128" max="2048" step="1" value="512" />
+            </form>
+
+            <div class="qr-preview-panel">
+              <div class="qr-preview-box">
+                <img id="qr-preview-image" alt="QR code preview" hidden />
+                <span id="qr-preview-placeholder">No preview generated.</span>
+              </div>
+              <p id="qr-modal-status" class="panel-subtle" aria-live="polite"></p>
+            </div>
+          </div>
+
+          <div class="maintenance-actions-row modal-actions-row">
+            <button id="preview-auction-qr" type="button">Preview QR Code</button>
+            <button id="download-auction-qr" type="button" disabled>Download PNG</button>
+            <button id="cancel-auction-qr" type="button" class="app-modal-close">Cancel</button>
+          </div>
+        </div>
+      </div>
+
       <div id="edit-auction-modal" class="app-modal" hidden>
         <div class="app-modal-card">
           <div class="app-modal-header">
@@ -611,8 +662,6 @@
             </label>
           </form>
           <div class="maintenance-actions-row modal-actions-row">
-            <button id="edit-auction-delete" type="button" class="danger-button">Delete Auction</button>
-            <button id="edit-auction-reset" type="button" class="danger-button">Reset Auction</button>
             <button id="edit-auction-purge-deleted" type="button" class="danger-button">Purge Deleted Items</button>
             <button id="save-edit-auction" type="button">Save Changes</button>
             <button id="cancel-edit-auction" type="button" class="app-modal-close">Cancel</button>

@@ -1839,12 +1839,13 @@ addTest("B-061a","POST /validate-auction failure short name OK but auction not i
   try {
     await setAuctionStatus("locked");
     await sleep(1000);
-    const { res } = await fetchJson(`${baseUrl}/validate-auction`, {
+    const { res, json } = await fetchJson(`${baseUrl}/validate-auction`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ short_name: testData.auctionShortName })
     });
     await expectStatus(res, 400);
+    assert.equal(json?.code, "not_accepting_submissions");
   } finally {
     await setAuctionStatus("setup");
   }

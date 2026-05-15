@@ -13,12 +13,14 @@ document.addEventListener("DOMContentLoaded", function () {
     let selectedAuctionPublicId = null;
     const API = "/api";
     const auctionGate = document.getElementById("auction-gate");
+    const auctionHolding = document.getElementById("auction-holding");
+    const auctionHoldingTitle = document.getElementById("auction-holding-title");
     const submissionSection = document.getElementById("submission-section");
     const auctionCodeInput = document.getElementById("auction-code-input");
     const auctionSubmitBtn = document.getElementById("auction-code-submit");
     const auctionError = document.getElementById("auction-error-message");
 
-    async function validateAuction(shortName) {
+    async function validateAuction(shortName, { fromUrl = false } = {}) {
 
         try {
 
@@ -28,13 +30,15 @@ document.addEventListener("DOMContentLoaded", function () {
                 body: JSON.stringify({ short_name: shortName.trim() })
             })
 
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || "Failed to validate");
-            }
-
-            // const data = await response.json();
             const data = await response.json();
+
+            if (!response.ok) {
+                if (fromUrl && data.code === "not_accepting_submissions") {
+                    showAuctionHolding(data);
+                    return;
+                }
+                throw new Error(data.error || "Failed to validate");
+            }
 
             if (data.valid) {
 
@@ -63,6 +67,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
                 showMessage(data.error, "error");
                 auctionGate.style.display = "block";
+                auctionHolding.style.display = "none";
             }
 
 
@@ -70,7 +75,8 @@ document.addEventListener("DOMContentLoaded", function () {
         } catch (error) {
 
             showMessage("Error: " + error.message, "error");
-                            auctionGate.style.display = "block";
+            auctionGate.style.display = "block";
+            auctionHolding.style.display = "none";
 
         }
     }
@@ -78,15 +84,28 @@ document.addEventListener("DOMContentLoaded", function () {
     function showFormForAuction(auction) {
         submissionSection.style.display = "block";
         auctionGate.style.display = "none";
+        auctionHolding.style.display = "none";
+    }
+
+    function showAuctionHolding(auction) {
+        const auctionName = auction.full_name || auction.short_name || "Auction";
+        document.querySelector("header h1").textContent = auctionName;
+        if (auctionHoldingTitle) {
+            auctionHoldingTitle.textContent = `${auctionName} is not accepting submissions`;
+        }
+        submissionSection.style.display = "none";
+        auctionGate.style.display = "none";
+        auctionHolding.style.display = "grid";
     }
 
     const urlParams = new URLSearchParams(window.location.search);
     const shortNameFromUrl = urlParams.get("auction");
     if (shortNameFromUrl) {
-        validateAuction(shortNameFromUrl);
+        validateAuction(shortNameFromUrl, { fromUrl: true });
 
     } else {
         auctionGate.style.display = "block";
+        auctionHolding.style.display = "none";
     }
 
 

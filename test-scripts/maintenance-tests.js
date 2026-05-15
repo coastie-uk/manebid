@@ -225,6 +225,21 @@ async function downloadManagedBackupBuffer(backupId) {
   return Buffer.from(await res.arrayBuffer());
 }
 
+async function generateQrCodeBuffer(payload, token = context.token) {
+  const res = await fetch(`${baseUrl}/maintenance/auctions/qr-code`, {
+    method: "POST",
+    headers: authHeaders(token, { "Content-Type": "application/json" }),
+    body: JSON.stringify(payload)
+  });
+  const buffer = Buffer.from(await res.arrayBuffer());
+  return { res, buffer };
+}
+
+function assertPngBuffer(buffer) {
+  assert.ok(buffer.length > 8, "Expected PNG response to contain data");
+  assert.equal(buffer.slice(0, 8).toString("hex"), "89504e470d0a1a0a", "Expected PNG signature");
+}
+
 async function restoreManagedBackup(backupId, payload, expectedStatus = 200) {
   const { res, json, text } = await fetchJson(`${baseUrl}/maintenance/backups/${encodeURIComponent(backupId)}/restore`, {
     method: "POST",
@@ -466,6 +481,66 @@ addTest("M-009","maintenance/auctions/list success", async () => {
   assert.ok(Object.prototype.hasOwnProperty.call(found, "deleted_item_count"), "Auction list should include deleted_item_count");
   context.testAuctionId = found.id;
   context.auctionCount = json.length;
+});
+
+addTest("M-009c","maintenance/auctions/qr-code success", async () => {
+  const { res, buffer } = await generateQrCodeBuffer({
+    short_name: context.testAuctionShortName,
+    root_url: "https://example.test/",
+    foreground: "#000000",
+    background: "#FFFFFF",
+    size: 256
+  });
+  await expectStatus(res, 200);
+  assert.match(res.headers.get("content-type") || "", /^image\/png\b/);
+  assertPngBuffer(buffer);
+});
+
+addTest("M-009d","maintenance/auctions/qr-code failure unauthenticated", async () => {
+  const res = await fetch(`${baseUrl}/maintenance/auctions/qr-code`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      short_name: context.testAuctionShortName,
+      root_url: "https://example.test/"
+    })
+  });
+  await expectStatus(res, 403);
+});
+
+addTest("M-009e","maintenance/auctions/qr-code failure invalid root URL", async () => {
+  const { res } = await generateQrCodeBuffer({
+    short_name: context.testAuctionShortName,
+    root_url: "ftp://example.test/"
+  });
+  await expectStatus(res, 400);
+});
+
+addTest("M-009f","maintenance/auctions/qr-code failure invalid colour", async () => {
+  const { res } = await generateQrCodeBuffer({
+    short_name: context.testAuctionShortName,
+    root_url: "https://example.test/",
+    foreground: "black"
+  });
+  await expectStatus(res, 400);
+});
+
+addTest("M-009g","maintenance/auctions/qr-code failure invalid size", async () => {
+  const { res } = await generateQrCodeBuffer({
+    short_name: context.testAuctionShortName,
+    root_url: "https://example.test/",
+    size: 64
+  });
+  await expectStatus(res, 400);
+});
+
+addTest("M-009h","maintenance/auctions/qr-code failure invalid image filename", async () => {
+  const { res } = await generateQrCodeBuffer({
+    short_name: context.testAuctionShortName,
+    root_url: "https://example.test/",
+    image: "../bad.png"
+  });
+  await expectStatus(res, 400);
 });
 
 addTest("M-009a","maintenance/auctions/purge-deleted-items failure wrong password", async () => {
@@ -1518,6 +1593,23 @@ addTest("M-032","maintenance/resources upload success", async () => {
   await expectStatus(res, 200);
   assert.ok(json && Array.isArray(json.saved), `Unexpected upload response: ${text}`);
   context.resourceFilename = fileName;
+});
+
+addTest("M-032A","maintenance/auctions/qr-code success with embedded resource image", async () => {
+  if (!context.resourceFilename) {
+    skipTest("Embedded QR test skipped: no uploaded resource filename.");
+  }
+  const { res, buffer } = await generateQrCodeBuffer({
+    short_name: context.testAuctionShortName,
+    root_url: "https://example.test/",
+    foreground: "#123456",
+    background: "#FFFFFF",
+    image: context.resourceFilename,
+    size: 256
+  });
+  await expectStatus(res, 200);
+  assert.match(res.headers.get("content-type") || "", /^image\/png\b/);
+  assertPngBuffer(buffer);
 });
 
 addTest("M-033","maintenance/resources delete failure invalid filename", async () => {
