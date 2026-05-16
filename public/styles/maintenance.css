@@ -191,6 +191,63 @@
   align-items: center;
 }
 
+.auction-context-menu {
+  min-width: 230px;
+  overflow: visible;
+}
+
+.auction-context-menu-action {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 18px 1fr auto;
+}
+
+.auction-context-menu-check {
+  color: #1f6b3c;
+  font-weight: 800;
+  min-height: 1em;
+  text-align: center;
+}
+
+.auction-context-menu-check.is-checked::before {
+  content: "\2713";
+}
+
+.auction-context-menu-submenu {
+  position: relative;
+}
+
+.auction-context-menu-submenu-caret {
+  color: #5f6b7a;
+  font-weight: 800;
+}
+
+.auction-context-menu-submenu-panel {
+  background: #fff;
+  border: 1px solid #cbd5df;
+  border-radius: 8px;
+  box-shadow: 0 18px 40px rgba(10, 30, 60, 0.2);
+  display: none;
+  left: calc(100% + 6px);
+  min-width: 170px;
+  padding: 6px;
+  position: absolute;
+  top: 0;
+  z-index: 12001;
+}
+
+.auction-context-menu--submenu-left .auction-context-menu-submenu-panel {
+  left: auto;
+  right: calc(100% + 6px);
+}
+
+.auction-context-menu-submenu:hover .auction-context-menu-submenu-panel,
+.auction-context-menu-submenu:focus-within .auction-context-menu-submenu-panel {
+  display: grid;
+  gap: 2px;
+}
+
 .maintenance-subpanel-head--tight {
   margin-bottom: 8px;
 }
@@ -1128,7 +1185,8 @@ footer {
 }
 
 :root[data-theme="dark"] .panel,
-:root[data-theme="dark"] .maintenance-result-box {
+:root[data-theme="dark"] .maintenance-result-box,
+:root[data-theme="dark"] .auction-context-menu-submenu-panel {
   background: var(--admin-panel-bg);
   border-color: var(--admin-panel-border);
   box-shadow: var(--admin-panel-shadow);
@@ -1186,6 +1244,14 @@ footer {
   background: #18263a;
   border-color: #47648c;
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24);
+}
+
+:root[data-theme="dark"] .auction-context-menu-check {
+  color: #9ee6b8;
+}
+
+:root[data-theme="dark"] .auction-context-menu-submenu-caret {
+  color: var(--admin-muted);
 }
 
 :root[data-theme="dark"] .maintenance-tab-button.is-active {

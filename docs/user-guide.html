@@ -838,9 +838,12 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="section">
           <h2>Auction Management</h2>
           <ul class="compact-list">
-            <li><strong>Auction Management</strong> lists existing auctions with ID, URL tag, name, logo, item count, status, and the <strong>Admin Can Set State</strong> flag.</li>
+            <li><strong>Auction Management</strong> lists existing auctions with ID, URL tag, name, logo, item count, read-only status, and the <strong>Admin Can Set State</strong> flag.</li>
             <li><strong>Generate QR Code</strong> opens a modal for a static public auction URL PNG. The root URL is editable, the <code>?auction=URL-tag</code> section is fixed, and options include foreground/background hex colours, output size, and an optional centre image from Image Management.</li>
-            <li><strong>Edit Auction</strong> opens a modal for the auction name, URL tag, logo, and the <strong>Allow admins to change the auction state</strong> checkbox.</li>
+            <li><strong>Edit Auction</strong> opens a modal for the auction name, URL tag, logo, auction status, and the <strong>Allow admins to change the auction state</strong> checkbox.</li>
+            <li><strong>Right-click menu:</strong> right-click an auction row to open a context menu headed by the auction name. It includes <strong>Generate QR code</strong>, <strong>Edit auction</strong>, <strong>Set status</strong>, <strong>Manage Items can set state</strong>, <strong>Reset auction</strong>, <strong>Purge deleted items</strong>, and <strong>Delete auction</strong>.</li>
+            <li><strong>Context menu status:</strong> <strong>Set status</strong> opens a submenu with the current auction status ticked. <strong>Manage Items can set state</strong> is ticked when Manage Items users are allowed to change state, and selecting it toggles that setting.</li>
+            <li><strong>Unavailable actions:</strong> context menu actions are greyed out using the same rules as the action buttons, including reset only for setup or archived auctions, purge only when deleted items exist, and delete only when the auction has no items.</li>
             <li><strong>Reset Auction</strong> and <strong>Delete Auction</strong>. Reset removes all auction items, bidders, and payments. Delete removes the auction entirely.</li>
             <li><strong>Purge Deleted Items</strong> permanently removes deleted items and their photo files from the selected auction after maintenance password confirmation.</li>
             <li><strong>Add New Auction</strong> has dedicated fields for the display name, URL tag, and logo.</li>

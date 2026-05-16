@@ -130,8 +130,8 @@
                         <th>Name</th>
                         <th>Logo</th>
                         <th>Items</th>
-                        <th>Status</th>
-                        <th>Admin Can Set State</th>
+                        <th>State</th>
+                        <th>Manage Items Can Set State</th>
                         <th>Actions</th>
                       </tr>
                     </thead>
@@ -473,7 +473,7 @@
                   <table id="pptx-image-table" class="maintenance-data-table">
                     <thead>
                       <tr>
-                        <th>Filename (in /resources)</th>
+                        <th>Filename</th>
                         <th>Size</th>
                         <th>Actions</th>
                       </tr>
@@ -655,10 +655,13 @@
             <label for="edit-auction-logo-select">Auction Logo</label>
             <select id="edit-auction-logo-select"></select>
 
+            <label for="edit-auction-status">Auction State</label>
+            <select id="edit-auction-status"></select>
+
             <label for="edit-auction-admin-state-permission">State permission</label>
             <label class="maintenance-inline-toggle" for="edit-auction-admin-state-permission">
               <input type="checkbox" id="edit-auction-admin-state-permission" />
-              Allow admins to change the auction state
+              Allow Manage Items user to change the auction state
             </label>
           </form>
           <div class="maintenance-actions-row modal-actions-row">

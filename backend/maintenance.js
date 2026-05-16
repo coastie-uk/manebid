@@ -693,23 +693,29 @@ async function renderAuctionQrPng({ url, foreground, background, size, centreIma
 
   const imageSize = Math.max(38, Math.round(size * 0.22));
   const padSize = Math.max(imageSize + 6, Math.round(size * 0.24));
-  const centreBuffer = await sharp({
-    create: {
-      width: padSize,
-      height: padSize,
-      channels: 4,
-      background
-    }
-  })
-    .composite([{
-      input: await sharp(centreImage.path)
-        .resize(imageSize, imageSize, { fit: "inside", withoutEnlargement: true })
-        .png()
-        .toBuffer(),
-      gravity: "center"
-    }])
-    .png()
-    .toBuffer();
+  let centreBuffer;
+  try {
+    centreBuffer = await sharp({
+      create: {
+        width: padSize,
+        height: padSize,
+        channels: 4,
+        background
+      }
+    })
+      .composite([{
+        input: await sharp(centreImage.path)
+          .resize(imageSize, imageSize, { fit: "inside", withoutEnlargement: true })
+          .png()
+          .toBuffer(),
+        gravity: "center"
+      }])
+      .png()
+      .toBuffer();
+  } catch (err) {
+    log('QR', logLevels.WARN, `Unable to render QR centre image "${centreImage.filename}"; generating plain QR code: ${err.message}`);
+    return qrBuffer;
+  }
 
   return sharp(qrBuffer)
     .composite([{ input: centreBuffer, gravity: "center" }])
@@ -2748,7 +2754,7 @@ router.post("/auctions/qr-code", async (req, res) => {
     });
 
     const safeShortName = auction.short_name.replace(/[^a-z0-9_-]/gi, "_");
-    logFromRequest(req, logLevels.INFO, `Generated QR code for auction ${auction.id} ${auction.short_name}`);
+    logFromRequest(req, logLevels.INFO, `Generated QR code for auction ${auction.id} ${auction.short_name} -> ${url} with size ${sizeResult.value} and centre image ${centreImageResult.value ? "YES" : "NO"}`);
     res.setHeader("Content-Type", "image/png");
     res.setHeader("Content-Disposition", `attachment; filename="auction-${safeShortName}-qr.png"`);
     res.setHeader("Cache-Control", "no-store");

@@ -31,6 +31,7 @@ const editAuctionIdInput = document.getElementById("edit-auction-id");
 const editAuctionShortNameInput = document.getElementById("edit-auction-short-name");
 const editAuctionFullNameInput = document.getElementById("edit-auction-full-name");
 const editAuctionLogoSelect = document.getElementById("edit-auction-logo-select");
+const editAuctionStatusSelect = document.getElementById("edit-auction-status");
 const editAuctionAdminStatePermissionInput = document.getElementById("edit-auction-admin-state-permission");
 const editAuctionPurgeDeletedButton = document.getElementById("edit-auction-purge-deleted");
 const auctionQrModal = document.getElementById("auction-qr-modal");
@@ -90,6 +91,7 @@ const backupRestoreSubtitle = document.getElementById("backup-restore-subtitle")
 const restoreSelectedBackupButton = document.getElementById("restore-selected-backup");
 const backupRestoreLog = document.getElementById("backup-restore-log");
 const saveRestoreLogButton = document.getElementById("save-restore-log");
+const AUCTION_STATUSES = Object.freeze(["setup", "locked", "live", "settlement", "archived"]);
 
 var isRendering = false;
 let currentUsername = null;
@@ -106,6 +108,7 @@ let backupOperationBusy = false;
 let resourceImageFiles = [];
 let selectedQrAuction = null;
 let currentQrPreviewUrl = null;
+let auctionContextMenu = null;
 
 const AUCTION_ACTION_ICONS = Object.freeze({
   qr: `
@@ -226,6 +229,15 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function normalizeAuctionStatus(status) {
+  const normalized = String(status || "").toLowerCase();
+  return AUCTION_STATUSES.includes(normalized) ? normalized : AUCTION_STATUSES[0];
+}
+
+function formatAuctionStatus(status) {
+  return normalizeAuctionStatus(status);
 }
 
 function formatBytes(bytes) {
@@ -654,6 +666,19 @@ function closeAboutModal() {
   }
 }
 
+function populateAuctionStatusSelect(select, selectedStatus) {
+  if (!select) return;
+  const normalizedStatus = normalizeAuctionStatus(selectedStatus);
+  select.innerHTML = "";
+  AUCTION_STATUSES.forEach((status) => {
+    const option = document.createElement("option");
+    option.value = status;
+    option.textContent = status;
+    option.selected = status === normalizedStatus;
+    select.appendChild(option);
+  });
+}
+
 function openEditAuctionModal(auction) {
   if (!editAuctionModal || !auction) return;
 
@@ -661,13 +686,14 @@ function openEditAuctionModal(auction) {
   editAuctionShortNameInput.value = auction.short_name || "";
   editAuctionFullNameInput.value = auction.full_name || "";
   editAuctionLogoSelect.value = auction.logo || "default_logo.png";
+  populateAuctionStatusSelect(editAuctionStatusSelect, auction.status);
   editAuctionAdminStatePermissionInput.checked = !!auction.admin_can_change_state;
   const deletedCount = Number(auction.deleted_item_count || 0);
   if (editAuctionPurgeDeletedButton) {
     editAuctionPurgeDeletedButton.disabled = deletedCount <= 0;
     editAuctionPurgeDeletedButton.title = deletedCount > 0 ? "" : "No deleted items to purge";
   }
-  editAuctionModal.dataset.auctionStatus = auction.status || "";
+  editAuctionModal.dataset.auctionStatus = normalizeAuctionStatus(auction.status);
   editAuctionModal.dataset.auctionItemCount = String(auction.item_count ?? 0);
   editAuctionModal.dataset.auctionDeletedItemCount = String(deletedCount);
   editAuctionModal.dataset.auctionFullName = auction.full_name || "";
@@ -870,6 +896,34 @@ async function downloadAuctionQrCode() {
   }
 }
 
+async function updateAuctionStatus(auctionId, status) {
+  const normalizedStatus = normalizeAuctionStatus(status);
+  const res = await fetch(`${API}/auctions/update-status`, {
+    method: "POST",
+    headers: {
+      Authorization: token,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ auction_id: auctionId, status: normalizedStatus })
+  });
+
+  const text = await res.text();
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = {};
+    }
+  }
+
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to update status");
+  }
+
+  return data;
+}
+
 async function deleteAuctionById(auctionId, auctionFullName = "") {
   const res1 = await fetch(`${API}/maintenance/auctions/list`, {
     method: "POST",
@@ -964,8 +1018,8 @@ async function resetAuctionFromRow(auction) {
   }
 }
 
-async function purgeDeletedItemsByAuctionId(auctionId) {
-  const deletedCount = Number(editAuctionModal?.dataset.auctionDeletedItemCount || 0);
+async function purgeDeletedItemsByAuctionId(auctionId, deletedCountOverride = null) {
+  const deletedCount = Number(deletedCountOverride ?? editAuctionModal?.dataset.auctionDeletedItemCount ?? 0);
   const confirmMsg = `Permanently delete ${deletedCount} deleted item(s) from auction ${auctionId}? Associated photo files will also be removed.`;
   const password = await promptPassword(`Enter your password to purge deleted items`, confirmMsg);
   if (!password) return false;
@@ -1008,6 +1062,227 @@ async function updateAuctionAdminStatePermission(auctionId, enabled) {
   return data;
 }
 
+function ensureAuctionContextMenu() {
+  if (auctionContextMenu) return auctionContextMenu;
+
+  auctionContextMenu = document.createElement("div");
+  auctionContextMenu.className = "item-context-menu auction-context-menu";
+  auctionContextMenu.hidden = true;
+  auctionContextMenu.setAttribute("role", "menu");
+  document.body.appendChild(auctionContextMenu);
+  return auctionContextMenu;
+}
+
+function closeAuctionContextMenu() {
+  if (!auctionContextMenu) return;
+  auctionContextMenu.hidden = true;
+  auctionContextMenu.innerHTML = "";
+  auctionContextMenu.removeAttribute("data-auction-id");
+}
+
+function positionAuctionContextMenu(menu, clientX, clientY) {
+  menu.style.left = "0px";
+  menu.style.top = "0px";
+  menu.classList.remove("auction-context-menu--submenu-left");
+  menu.hidden = false;
+
+  const menuRect = menu.getBoundingClientRect();
+  const margin = 8;
+  if (clientX + menuRect.width + 190 + margin > window.innerWidth) {
+    menu.classList.add("auction-context-menu--submenu-left");
+  }
+  const maxLeft = Math.max(margin, window.innerWidth - menuRect.width - margin);
+  const maxTop = Math.max(margin, window.innerHeight - menuRect.height - margin);
+  const left = Math.min(Math.max(clientX, margin), maxLeft);
+  const top = Math.min(Math.max(clientY, margin), maxTop);
+
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+}
+
+async function updateAuctionStatusFromContext(auction, status) {
+  const auctionId = Number(auction?.id);
+  const normalizedStatus = normalizeAuctionStatus(status);
+  if (!auctionId || normalizeAuctionStatus(auction?.status) === normalizedStatus) return;
+
+  try {
+    const data = await updateAuctionStatus(auctionId, normalizedStatus);
+    showMessage(data.message || "Status updated", "success");
+    refreshAuctions();
+  } catch (error) {
+    showMessage(error?.message || "Failed to update status", "error");
+  }
+}
+
+async function toggleAuctionAdminStateFromContext(auction) {
+  const auctionId = Number(auction?.id);
+  if (!auctionId) {
+    showMessage("Missing auction ID.", "error");
+    return;
+  }
+
+  try {
+    const enabled = !auction.admin_can_change_state;
+    const data = await updateAuctionAdminStatePermission(auctionId, enabled);
+    showMessage(data.message || "Auction permission updated", "success");
+    refreshAuctions();
+  } catch (error) {
+    showMessage(error?.message || "Failed to update auction permission", "error");
+  }
+}
+
+async function purgeDeletedItemsFromContext(auction) {
+  const auctionId = Number(auction?.id);
+  const deletedCount = Number(auction?.deleted_item_count || 0);
+  if (!auctionId) {
+    showMessage("Missing auction ID.", "error");
+    return;
+  }
+  if (deletedCount <= 0) return;
+
+  const purged = await purgeDeletedItemsByAuctionId(auctionId, deletedCount);
+  if (purged) {
+    refreshAuctions();
+  }
+}
+
+function getAuctionContextMenuActions(auction) {
+  const canReset = auction.status === "archived" || auction.status === "setup";
+  const canPurge = Number(auction.deleted_item_count || 0) > 0;
+  const canDelete = Number(auction.item_count || 0) <= 0;
+
+  return [
+    {
+      id: "qr",
+      label: "Generate QR code",
+      run: () => openAuctionQrModal(auction)
+    },
+    {
+      id: "edit",
+      label: "Edit auction",
+      run: () => openEditAuctionModal(auction)
+    },
+    {
+      id: "admin-state",
+      label: "Manage Items can set state",
+      checked: !!auction.admin_can_change_state,
+      run: () => toggleAuctionAdminStateFromContext(auction)
+    },
+    {
+      id: "reset",
+      label: "Reset auction",
+      disabled: !canReset,
+      disabledReason: "Only auctions in state setup or archived may be reset",
+      run: () => resetAuctionFromRow(auction)
+    },
+    {
+      id: "purge",
+      label: "Purge deleted items",
+      disabled: !canPurge,
+      disabledReason: "No deleted items to purge",
+      run: () => purgeDeletedItemsFromContext(auction)
+    },
+    {
+      id: "delete",
+      label: "Delete auction",
+      disabled: !canDelete,
+      disabledReason: "Cannot delete auction with items",
+      run: () => deleteAuctionFromRow(auction)
+    }
+  ];
+}
+
+function renderAuctionContextMenuAction(action) {
+  return `
+    <button
+      type="button"
+      class="item-context-menu-action auction-context-menu-action"
+      role="menuitem"
+      data-action-id="${escapeHtml(action.id)}"
+      ${action.disabled ? "disabled" : ""}
+      ${action.disabledReason ? `title="${escapeHtml(action.disabledReason)}"` : ""}
+    >
+      <span class="auction-context-menu-check${action.checked ? " is-checked" : ""}" aria-hidden="true"></span>
+      <span>${escapeHtml(action.label)}</span>
+    </button>
+  `;
+}
+
+function renderAuctionStatusSubmenu(auction) {
+  const currentStatus = normalizeAuctionStatus(auction.status);
+  return `
+    <div class="auction-context-menu-submenu">
+      <button
+        type="button"
+        class="item-context-menu-action auction-context-menu-action auction-context-menu-submenu-trigger"
+        role="menuitem"
+        aria-haspopup="true"
+      >
+        <span class="auction-context-menu-check" aria-hidden="true"></span>
+        <span>Set State</span>
+        <span class="auction-context-menu-submenu-caret" aria-hidden="true">></span>
+      </button>
+      <div class="auction-context-menu-submenu-panel" role="menu">
+        ${AUCTION_STATUSES.map((status) => `
+          <button
+            type="button"
+            class="item-context-menu-action auction-context-menu-action"
+            role="menuitemradio"
+            aria-checked="${status === currentStatus ? "true" : "false"}"
+            data-status="${escapeHtml(status)}"
+          >
+            <span class="auction-context-menu-check${status === currentStatus ? " is-checked" : ""}" aria-hidden="true"></span>
+            <span>${escapeHtml(status)}</span>
+          </button>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function openAuctionContextMenu(row, event) {
+  const auction = row?._auction;
+  const auctionId = Number(auction?.id);
+  if (!Number.isInteger(auctionId) || auctionId <= 0) return;
+
+  closeMenuGroups();
+  closeAuctionContextMenu();
+  const menu = ensureAuctionContextMenu();
+  const actions = getAuctionContextMenuActions(auction);
+  const auctionName = auction.full_name || auction.short_name || `Auction ${auctionId}`;
+
+  menu.dataset.auctionId = String(auctionId);
+  menu.innerHTML = `
+    <div class="item-context-menu-header">${escapeHtml(auctionName)}</div>
+    <div class="item-context-menu-actions">
+      ${renderAuctionContextMenuAction(actions[0])}
+      ${renderAuctionContextMenuAction(actions[1])}
+      ${renderAuctionStatusSubmenu(auction)}
+      ${actions.slice(2).map(renderAuctionContextMenuAction).join("")}
+    </div>
+  `;
+
+  menu.querySelectorAll("[data-action-id]").forEach((button) => {
+    const action = actions.find((candidate) => candidate.id === button.dataset.actionId);
+    if (!action || action.disabled) return;
+    button.addEventListener("click", async () => {
+      closeAuctionContextMenu();
+      await action.run();
+    });
+  });
+
+  menu.querySelectorAll("[data-status]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const status = button.dataset.status;
+      closeAuctionContextMenu();
+      await updateAuctionStatusFromContext(auction, status);
+    });
+  });
+
+  positionAuctionContextMenu(menu, event.clientX, event.clientY);
+  menu.querySelector(".item-context-menu-action:not(:disabled)")?.focus({ preventScroll: true });
+}
+
 function setMaintenanceUserMenu(username) {
   const safeName = username || "maintenance";
   if (maintenanceLoggedInUser) maintenanceLoggedInUser.textContent = safeName;
@@ -1043,6 +1318,37 @@ function bindMaintenanceShell() {
       closeMenuGroups();
     }
   });
+
+  const auctionTableBody = document.getElementById("auction-table-body");
+  auctionTableBody?.addEventListener("contextmenu", (event) => {
+    const row = event.target.closest("tr");
+    if (!row || !auctionTableBody.contains(row) || !row._auction) return;
+
+    event.preventDefault();
+    openAuctionContextMenu(row, event);
+  });
+
+  document.addEventListener("contextmenu", (event) => {
+    if (!auctionContextMenu || auctionContextMenu.hidden) return;
+    if (auctionTableBody?.contains(event.target)) return;
+    closeAuctionContextMenu();
+  });
+
+  document.addEventListener("mousedown", (event) => {
+    if (!auctionContextMenu || auctionContextMenu.hidden) return;
+    if (auctionContextMenu.contains(event.target)) return;
+    closeAuctionContextMenu();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !auctionContextMenu || auctionContextMenu.hidden) return;
+    event.preventDefault();
+    event.stopPropagation();
+    closeAuctionContextMenu();
+  }, true);
+
+  window.addEventListener("scroll", closeAuctionContextMenu, true);
+  window.addEventListener("resize", closeAuctionContextMenu);
 
   document.querySelectorAll(".menu-item-link, .menu-item-button").forEach((element) => {
     element.addEventListener("click", () => {
@@ -2510,16 +2816,17 @@ try {
   isRendering = true; // Prevent the table listener firing while we render the table
  
   const tableBody = document.getElementById("auction-table-body");
+  closeAuctionContextMenu();
   tableBody.innerHTML = "";
 
   auctions.forEach(auction => {
     const row = document.createElement("tr");
+    row._auction = auction;
     // if (!auction.is_active) {
     //   row.classList.add("auction-inactive");
     // }
     const logoSrc = auction.logo ? `${API}/resources/${encodeURIComponent(auction.logo)}` : "/pptx-resources/default_logo.png";
 
-    const statusOptions = ["setup", "locked", "live", "settlement", "archived"]; //  statuses
     const allowAdmin = !!auction.admin_can_change_state;
 
     // removed -->     <td style="text-align:center;"><input type="checkbox" ${auction.is_active ? "checked" : ""}></td>
@@ -2530,12 +2837,7 @@ try {
     <td>${escapeHtml(auction.full_name)}</td>
     <td style="text-align:center;"><img src="${logoSrc}" alt="Logo" style="height:40px; max-width:100px; object-fit:contain;"></td>
     <td>${escapeHtml(auction.item_count)}${Number(auction.deleted_item_count || 0) > 0 ? ` (${escapeHtml(auction.deleted_item_count)} deleted)` : ""}</td>
-    <td> <select class="status-select" data-id="${auction.id}">
-        ${statusOptions.map(opt =>
-      `<option value="${opt}" ${auction.status === opt ? "selected" : ""}>${opt}</option>`
-    ).join("")}
-        </select>
-    </td>
+    <td>${escapeHtml(formatAuctionStatus(auction.status))}</td>
     <td>${allowAdmin ? "Yes" : "No"}</td>
     <td><div class="auction-action-row"></div></td>
   `;
@@ -2571,36 +2873,6 @@ try {
 } finally {
 isRendering = false;
 }
-
-  // Attached event handler for auction status dropdowns
-  document.getElementById("auction-table-body").onchange = async (e) => {
-
-    if (isRendering) return; // Stop the listener while we render the table
-    if (e.target.classList.contains("status-select")) {
-      const auctionId = e.target.dataset.id;
-      const newStatus = e.target.value.toLowerCase();
-
-      const res = await fetch(`${API}/auctions/update-status`, {
-        method: "POST",
-        headers: {
-          Authorization: token,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ auction_id: auctionId, status: newStatus })
-      });
-
-      isRendering = true; // Stop dupliate triggers of the listener
-
-      const data = await res.json();
-      if (res.ok) {
-        showMessage(data.message || `Status updated`, "success");
-      } else {
-        showMessage(data.error || "Failed to update status", "error");
-      }
-      isRendering = false;
-    }
-  };
-
 
   // populate the test data dropdown
   const testAuctionSelect = document.getElementById("test-auction-select");
@@ -2656,6 +2928,8 @@ saveEditAuctionButton?.addEventListener("click", async () => {
   const fullName = editAuctionFullNameInput.value.trim();
   const selectedLogo = editAuctionLogoSelect.value;
   const adminCanSetState = !!editAuctionAdminStatePermissionInput.checked;
+  const selectedStatus = normalizeAuctionStatus(editAuctionStatusSelect?.value);
+  const originalStatus = normalizeAuctionStatus(editAuctionModal?.dataset.auctionStatus);
 
   if (!auctionId) {
     showMessage("Missing auction ID.", "error");
@@ -2695,6 +2969,10 @@ saveEditAuctionButton?.addEventListener("click", async () => {
     if (!permissionData) {
       showMessage("Failed to update auction permission", "error");
       return;
+    }
+
+    if (selectedStatus !== originalStatus) {
+      await updateAuctionStatus(auctionId, selectedStatus);
     }
 
     showMessage(updateData.message || "Auction updated", "success");
