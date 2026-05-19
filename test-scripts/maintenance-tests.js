@@ -1197,14 +1197,60 @@ addTest("M-021ja","maintenance/users/:username/access success with permission no
   assert.deepEqual(json.user.permissions, ["live_feed"]);
 });
 
-addTest("M-021jaa","manage_users user cannot grant permissions they do not have when updating access", async () => {
+addTest("M-021ja0","manage_users user can preserve unowned access while adding owned access", async () => {
+  const targetUsername = `mt_preserve_access_${userSeed}`;
+  const createTarget = await fetchJson(`${baseUrl}/maintenance/users`, {
+    method: "POST",
+    headers: authHeaders(context.token, { "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      username: targetUsername,
+      password: "PreserveAccess_123!",
+      roles: ["cashier"],
+      permissions: ["live_feed"]
+    })
+  });
+  if (createTarget.res.status !== 201 && createTarget.res.status !== 409) {
+    throw new Error(`Failed to prepare preserve-access target user: ${createTarget.text || createTarget.res.status}`);
+  }
+
   const limitedToken = await ensurePermissionManagerToken();
-  const { res, json } = await fetchJson(`${baseUrl}/maintenance/users/${encodeURIComponent(context.managedUser.username)}/access`, {
+  const { res, json, text } = await fetchJson(`${baseUrl}/maintenance/users/${encodeURIComponent(targetUsername)}/access`, {
+    method: "PATCH",
+    headers: authHeaders(limitedToken, { "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      roles: ["cashier", "maintenance"],
+      permissions: ["live_feed", "manage_users"]
+    })
+  });
+  await expectStatus(res, 200);
+  assert.ok(json && Array.isArray(json.user?.roles), `Unexpected access update response: ${text}`);
+  assert.deepEqual(json.user.roles, ["cashier", "maintenance"]);
+  assert.deepEqual(json.user.permissions, ["live_feed", "manage_users"]);
+});
+
+addTest("M-021jaa","manage_users user cannot grant permissions they do not have when updating access", async () => {
+  const targetUsername = `mt_grant_perm_${userSeed}`;
+  const createTarget = await fetchJson(`${baseUrl}/maintenance/users`, {
+    method: "POST",
+    headers: authHeaders(context.token, { "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      username: targetUsername,
+      password: "GrantPerm_123!",
+      roles: ["maintenance"],
+      permissions: ["manage_users"]
+    })
+  });
+  if (createTarget.res.status !== 201 && createTarget.res.status !== 409) {
+    throw new Error(`Failed to prepare grant-permission target user: ${createTarget.text || createTarget.res.status}`);
+  }
+
+  const limitedToken = await ensurePermissionManagerToken();
+  const { res, json } = await fetchJson(`${baseUrl}/maintenance/users/${encodeURIComponent(targetUsername)}/access`, {
     method: "PATCH",
     headers: authHeaders(limitedToken, { "Content-Type": "application/json" }),
     body: JSON.stringify({
       roles: ["maintenance"],
-      permissions: ["live_feed"]
+      permissions: ["manage_users", "live_feed"]
     })
   });
   await expectStatus(res, 403);
@@ -1242,13 +1288,28 @@ addTest("M-021jaaa","manage_users user cannot remove permissions they do not hav
 });
 
 addTest("M-021jaaab","manage_users user cannot grant roles they do not have when updating access", async () => {
+  const targetUsername = `mt_grant_role_${userSeed}`;
+  const createTarget = await fetchJson(`${baseUrl}/maintenance/users`, {
+    method: "POST",
+    headers: authHeaders(context.token, { "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      username: targetUsername,
+      password: "GrantRole_123!",
+      roles: ["maintenance"],
+      permissions: ["manage_users"]
+    })
+  });
+  if (createTarget.res.status !== 201 && createTarget.res.status !== 409) {
+    throw new Error(`Failed to prepare grant-role target user: ${createTarget.text || createTarget.res.status}`);
+  }
+
   const limitedToken = await ensurePermissionManagerToken();
-  const { res, json } = await fetchJson(`${baseUrl}/maintenance/users/${encodeURIComponent(context.managedUser.username)}/access`, {
+  const { res, json } = await fetchJson(`${baseUrl}/maintenance/users/${encodeURIComponent(targetUsername)}/access`, {
     method: "PATCH",
     headers: authHeaders(limitedToken, { "Content-Type": "application/json" }),
     body: JSON.stringify({
-      roles: ["cashier"],
-      permissions: []
+      roles: ["maintenance", "cashier"],
+      permissions: ["manage_users"]
     })
   });
   await expectStatus(res, 403);

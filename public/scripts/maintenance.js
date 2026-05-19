@@ -78,6 +78,15 @@ const addUserModal = document.getElementById("add-user-modal");
 const closeAddUserModalButton = document.getElementById("close-add-user-modal");
 const cancelAddUserButton = document.getElementById("cancel-add-user");
 const addUserAccessNote = document.getElementById("add-user-access-note");
+const editUserModal = document.getElementById("edit-user-modal");
+const closeEditUserModalButton = document.getElementById("close-edit-user-modal");
+const cancelEditUserButton = document.getElementById("cancel-edit-user");
+const editUserAccessNote = document.getElementById("edit-user-access-note");
+const editUserUsernameInput = document.getElementById("edit-user-username");
+const editUserPasswordInput = document.getElementById("edit-user-password");
+const editUserConfirmPasswordInput = document.getElementById("edit-user-confirm-password");
+const saveEditUserAccessButton = document.getElementById("save-edit-user-access");
+const changeEditUserPasswordButton = document.getElementById("change-edit-user-password");
 const backupDetailTitle = document.getElementById("backup-detail-title");
 const backupDetailSubtitle = document.getElementById("backup-detail-subtitle");
 const backupDetailGrid = document.getElementById("backup-detail-grid");
@@ -109,6 +118,7 @@ let resourceImageFiles = [];
 let selectedQrAuction = null;
 let currentQrPreviewUrl = null;
 let auctionContextMenu = null;
+let selectedEditUser = null;
 
 const AUCTION_ACTION_ICONS = Object.freeze({
   qr: `
@@ -336,7 +346,18 @@ function resetAddUserForm() {
   if (confirmPasswordInput) confirmPasswordInput.value = "";
   document.querySelectorAll('input[name="new-user-role"]').forEach((el) => { el.checked = el.defaultChecked; });
   document.querySelectorAll('input[name="new-user-permission"]').forEach((el) => { el.checked = el.defaultChecked; });
-  syncAccessEditorState(document);
+  syncAccessEditorState(addUserModal || document);
+}
+
+function clearEditUserPasswordFields() {
+  if (editUserPasswordInput) editUserPasswordInput.value = "";
+  if (editUserConfirmPasswordInput) editUserConfirmPasswordInput.value = "";
+}
+
+function closeEditUserModal() {
+  selectedEditUser = null;
+  clearEditUserPasswordFields();
+  closeModal(editUserModal);
 }
 
 function createBackupActionButton(icon, title, onClick, { danger = false, disabled = false } = {}) {
@@ -1415,6 +1436,14 @@ function bindMaintenanceShell() {
       closeModal(addUserModal);
     }
   });
+
+  closeEditUserModalButton?.addEventListener("click", closeEditUserModal);
+  cancelEditUserButton?.addEventListener("click", closeEditUserModal);
+  editUserModal?.addEventListener("click", (event) => {
+    if (event.target === editUserModal) {
+      closeEditUserModal();
+    }
+  });
 }
 
 bindMaintenanceShell();
@@ -1939,6 +1968,12 @@ const ACCESS_DEPENDENCIES = [
   { permission: "manage_users", role: "maintenance" }
 ];
 const USER_ACTION_ICONS = Object.freeze({
+  edit: `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M12 20h9"></path>
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"></path>
+    </svg>
+  `,
   save: `
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
       <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"></path>
@@ -1984,7 +2019,7 @@ function createUserActionButton(icon, title, { disabled = false } = {}) {
 }
 
 function syncGrantableRoleCheckboxes(scope = document) {
-  scope.querySelectorAll('input[name="new-user-role"], input[data-access-role]').forEach((roleInput) => {
+  scope.querySelectorAll('input[name="new-user-role"], input[name="edit-user-role"], input[data-access-role]').forEach((roleInput) => {
     const actorCanGrant = roleInput.dataset.actorCanGrant !== "false";
     const lockedForSelf = roleInput.dataset.lockedSelf === "true";
     const lockedForRoot = roleInput.dataset.lockedRoot === "true";
@@ -1992,13 +2027,29 @@ function syncGrantableRoleCheckboxes(scope = document) {
   });
 }
 
+function syncGrantablePermissionCheckboxes(scope = document) {
+  scope.querySelectorAll('input[name="new-user-permission"], input[name="edit-user-permission"], input[data-access-permission]').forEach((permissionInput) => {
+    const actorCanGrant = permissionInput.dataset.actorCanGrant !== "false";
+    const lockedForSelf = permissionInput.dataset.lockedSelf === "true";
+    const lockedForRoot = permissionInput.dataset.lockedRoot === "true";
+    permissionInput.disabled = !actorCanGrant || lockedForSelf || lockedForRoot;
+  });
+}
+
+function findRoleInputForPermission(scope, permissionInput, role) {
+  if (permissionInput.name === "new-user-permission") {
+    return scope.querySelector(`input[name="new-user-role"][value="${role}"]`);
+  }
+  if (permissionInput.name === "edit-user-permission") {
+    return scope.querySelector(`input[name="edit-user-role"][value="${role}"]`);
+  }
+  return scope.querySelector(`input[data-access-role="${role}"]`);
+}
+
 function syncDependentAccessCheckboxes(scope = document) {
   ACCESS_DEPENDENCIES.forEach(({ permission, role }) => {
     scope.querySelectorAll(`input[value="${permission}"]`).forEach((permissionInput) => {
-      const isNewUserRow = permissionInput.name === "new-user-permission";
-      const roleInput = isNewUserRow
-        ? scope.querySelector(`input[name="new-user-role"][value="${role}"]`)
-        : scope.querySelector(`input[data-access-role="${role}"]`);
+      const roleInput = findRoleInputForPermission(scope, permissionInput, role);
 
       const allowedByRole = Boolean(roleInput?.checked);
       const actorCanGrant = permissionInput.dataset.actorCanGrant !== "false";
@@ -2015,28 +2066,30 @@ function syncDependentAccessCheckboxes(scope = document) {
 
 function syncAccessEditorState(scope = document) {
   syncGrantableRoleCheckboxes(scope);
+  syncGrantablePermissionCheckboxes(scope);
   syncDependentAccessCheckboxes(scope);
-  if (scope === document) {
-    updateCreateUserAccessAvailability();
-  }
+  updateAccessAvailability(addUserModal || document, 'input[name="new-user-role"], input[name="new-user-permission"]', addUserAccessNote);
+  updateAccessAvailability(editUserModal || document, 'input[name="edit-user-role"], input[name="edit-user-permission"]', editUserAccessNote);
 }
 
-function updateCreateUserAccessAvailability() {
+function updateAccessAvailability(scope, selector, note) {
   let hasUnavailableAccess = false;
 
-  document.querySelectorAll('input[name="new-user-role"], input[name="new-user-permission"]').forEach((input) => {
+  scope.querySelectorAll(selector).forEach((input) => {
     const item = input.closest(".user-access-item");
     if (!item) return;
 
-    const blockedByActor = input.dataset.actorCanGrant === "false";
-    item.classList.toggle("user-access-item--unavailable", blockedByActor);
-    if (blockedByActor) {
+    const unavailable = input.dataset.actorCanGrant === "false"
+      || input.dataset.lockedSelf === "true"
+      || input.dataset.lockedRoot === "true";
+    item.classList.toggle("user-access-item--unavailable", unavailable);
+    if (unavailable) {
       hasUnavailableAccess = true;
     }
   });
 
-  if (addUserAccessNote) {
-    addUserAccessNote.hidden = !hasUnavailableAccess;
+  if (note) {
+    note.hidden = !hasUnavailableAccess;
   }
 }
 
@@ -2108,6 +2161,136 @@ document.getElementById("add-user-button").onclick = async () => {
   }
 };
 
+function userHasRoleAccess(user, role) {
+  return Array.isArray(user?.roles) && user.roles.includes(role);
+}
+
+function userHasPermissionAccess(user, permission) {
+  return Array.isArray(user?.permissions) && user.permissions.includes(permission);
+}
+
+function createAccessIndicator(enabled) {
+  const indicator = document.createElement("span");
+  indicator.className = `user-access-indicator${enabled ? " is-enabled" : ""}`;
+  indicator.setAttribute("aria-label", enabled ? "Access granted" : "Access not granted");
+  indicator.title = enabled ? "Access granted" : "Access not granted";
+  indicator.innerHTML = enabled ? "&#10003;" : "&ndash;";
+  return indicator;
+}
+
+function setupAccessInput(input, { isCurrentUser = false, isRoot = false } = {}) {
+  const isRoleInput = input.name === "new-user-role" || input.name === "edit-user-role";
+  input.dataset.actorCanGrant = isRoleInput
+    ? (canGrantRole(input.value) ? "true" : "false")
+    : (canGrantPermission(input.value) ? "true" : "false");
+  input.dataset.originalChecked = input.checked ? "true" : "false";
+  input.dataset.lockedSelf = isCurrentUser ? "true" : "false";
+  input.dataset.lockedRoot = isRoot ? "true" : "false";
+}
+
+function getEditUserAccessInputs() {
+  return Array.from(editUserModal?.querySelectorAll('input[name="edit-user-role"], input[name="edit-user-permission"]') || []);
+}
+
+function populateEditUserModal(user) {
+  const isCurrentUser = user.username === currentUsername;
+  const isRoot = Boolean(user.is_root);
+  selectedEditUser = user;
+  if (editUserUsernameInput) {
+    editUserUsernameInput.value = user.username || "";
+  }
+  clearEditUserPasswordFields();
+
+  getEditUserAccessInputs().forEach((input) => {
+    if (input.name === "edit-user-role") {
+      input.checked = userHasRoleAccess(user, input.value);
+    } else {
+      input.checked = userHasPermissionAccess(user, input.value);
+    }
+    setupAccessInput(input, { isCurrentUser, isRoot });
+  });
+
+  syncAccessEditorState(editUserModal || document);
+  if (saveEditUserAccessButton) {
+    saveEditUserAccessButton.disabled = isCurrentUser || isRoot;
+    saveEditUserAccessButton.title = isCurrentUser
+      ? "You cannot change your own access"
+      : (isRoot ? "The root user's access cannot be changed" : "");
+  }
+  if (changeEditUserPasswordButton) {
+    changeEditUserPasswordButton.disabled = isRoot;
+    changeEditUserPasswordButton.title = isRoot ? "The root password cannot be changed here" : "";
+  }
+}
+
+function openEditUserModal(user) {
+  populateEditUserModal(user);
+  openModal(editUserModal);
+  editUserPasswordInput?.focus();
+}
+
+function collectEditUserAccess() {
+  const roles = Array.from(editUserModal?.querySelectorAll('input[name="edit-user-role"]:checked') || []).map((el) => el.value);
+  const permissions = Array.from(editUserModal?.querySelectorAll('input[name="edit-user-permission"]:checked') || []).map((el) => el.value);
+  return { roles, permissions };
+}
+
+saveEditUserAccessButton?.addEventListener("click", async () => {
+  if (!selectedEditUser) return;
+  const { roles, permissions } = collectEditUserAccess();
+  if (roles.length === 0 && permissions.length === 0) {
+    showMessage("A user must have at least one access option.", "error");
+    return;
+  }
+
+  const updateRes = await fetch(`${API}/maintenance/users/${encodeURIComponent(selectedEditUser.username)}/access`, {
+    method: "PATCH",
+    headers: {
+      Authorization: getAuthToken(),
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ roles, permissions })
+  });
+  const updateData = await updateRes.json();
+  if (updateRes.ok) {
+    showMessage(updateData.message || "Access updated.", "success");
+    closeEditUserModal();
+    loadUsers();
+  } else {
+    showMessage(updateData.error || "Failed to update access.", "error");
+  }
+});
+
+changeEditUserPasswordButton?.addEventListener("click", async () => {
+  if (!selectedEditUser) return;
+  const newPassword = editUserPasswordInput?.value || "";
+  const confirmPassword = editUserConfirmPasswordInput?.value || "";
+  if (!newPassword || !confirmPassword) {
+    showMessage("Both password fields are required.", "error");
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    showMessage("Passwords do not match.", "error");
+    return;
+  }
+
+  const pwRes = await fetch(`${API}/maintenance/users/${encodeURIComponent(selectedEditUser.username)}/password`, {
+    method: "POST",
+    headers: {
+      Authorization: getAuthToken(),
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ newPassword })
+  });
+  const pwData = await pwRes.json();
+  if (pwRes.ok) {
+    showMessage(pwData.message || "Password updated.", "success");
+    clearEditUserPasswordFields();
+  } else {
+    showMessage(pwData.error || "Failed to set password.", "error");
+  }
+});
+
 async function loadUsers() {
   const tableBody = document.getElementById("user-table-body");
   if (!tableBody || !canManageUsers()) {
@@ -2153,8 +2336,6 @@ async function loadUsers() {
 
   users.forEach((user) => {
     const tr = document.createElement("tr");
-    const roleCheckboxes = {};
-    const permissionCheckboxes = {};
     const isCurrentUser = user.username === currentUsername;
 
     const usernameTd = document.createElement("td");
@@ -2164,40 +2345,16 @@ async function loadUsers() {
     USER_ROLE_ORDER.forEach((role) => {
       const td = document.createElement("td");
       td.style.textAlign = "center";
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = Array.isArray(user.roles) && user.roles.includes(role);
-      cb.disabled = Boolean(user.is_root) || isCurrentUser;
-      cb.dataset.accessRole = role;
-      cb.dataset.actorCanGrant = canGrantRole(role) ? "true" : "false";
-      cb.dataset.originalChecked = cb.checked ? "true" : "false";
-      cb.dataset.lockedSelf = isCurrentUser ? "true" : "false";
-      cb.dataset.lockedRoot = user.is_root ? "true" : "false";
-      cb.addEventListener("change", () => syncAccessEditorState(tr));
-      roleCheckboxes[role] = cb;
-      td.appendChild(cb);
+      td.appendChild(createAccessIndicator(userHasRoleAccess(user, role)));
       tr.appendChild(td);
     });
 
     USER_PERMISSION_ORDER.forEach((permission) => {
       const td = document.createElement("td");
       td.style.textAlign = "center";
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = Array.isArray(user.permissions) && user.permissions.includes(permission);
-      cb.disabled = Boolean(user.is_root) || isCurrentUser;
-      cb.dataset.accessPermission = permission;
-      cb.dataset.actorCanGrant = canGrantPermission(permission) ? "true" : "false";
-      cb.dataset.originalChecked = cb.checked ? "true" : "false";
-      cb.dataset.lockedSelf = isCurrentUser ? "true" : "false";
-      cb.dataset.lockedRoot = user.is_root ? "true" : "false";
-      cb.addEventListener("change", () => syncAccessEditorState(tr));
-      permissionCheckboxes[permission] = cb;
-      td.appendChild(cb);
+      td.appendChild(createAccessIndicator(userHasPermissionAccess(user, permission)));
       tr.appendChild(td);
     });
-
-    syncAccessEditorState(tr);
 
     const actionsTd = document.createElement("td");
     const actionsWrap = document.createElement("div");
@@ -2233,60 +2390,8 @@ async function loadUsers() {
     };
 
     if (!user.is_root) {
-      const saveRolesBtn = createUserActionButton(
-        USER_ACTION_ICONS.save,
-        isCurrentUser ? "You cannot change your own access" : "Save access changes",
-        { disabled: isCurrentUser }
-      );
-      saveRolesBtn.onclick = async () => {
-        const roles = USER_ROLE_ORDER.filter((role) => roleCheckboxes[role].checked);
-        const permissions = USER_PERMISSION_ORDER.filter((permission) => permissionCheckboxes[permission].checked);
-        if (roles.length === 0 && permissions.length === 0) {
-          showMessage("A user must have at least one access option.", "error");
-          return;
-        }
-        const updateRes = await fetch(`${API}/maintenance/users/${encodeURIComponent(user.username)}/access`, {
-          method: "PATCH",
-          headers: {
-            Authorization: getAuthToken(),
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ roles, permissions })
-        });
-        const updateData = await updateRes.json();
-        if (updateRes.ok) {
-          showMessage(updateData.message || "Access updated.", "success");
-          loadUsers();
-        } else {
-          showMessage(updateData.error || "Failed to update access.", "error");
-        }
-      };
-
-      const setPasswordBtn = createUserActionButton(USER_ACTION_ICONS.key, "Set password");
-      setPasswordBtn.onclick = async () => {
-        const newPassword = await promptPassword(`Enter new password for "${user.username}"`);
-        if (!newPassword) return;
-        const confirmPassword = await promptPassword(`Confirm new password for "${user.username}"`);
-        if (!confirmPassword) return;
-        if (newPassword !== confirmPassword) {
-          showMessage("Passwords do not match.", "error");
-          return;
-        }
-        const pwRes = await fetch(`${API}/maintenance/users/${encodeURIComponent(user.username)}/password`, {
-          method: "POST",
-          headers: {
-            Authorization: getAuthToken(),
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ newPassword })
-        });
-        const pwData = await pwRes.json();
-        if (pwRes.ok) {
-          showMessage(pwData.message || "Password updated.", "success");
-        } else {
-          showMessage(pwData.error || "Failed to set password.", "error");
-        }
-      };
+      const editBtn = createUserActionButton(USER_ACTION_ICONS.edit, "Edit user");
+      editBtn.onclick = () => openEditUserModal(user);
 
       const deleteBtn = createUserActionButton(USER_ACTION_ICONS.trash, "Delete user", {
         disabled: user.username === currentUsername
@@ -2314,11 +2419,14 @@ async function loadUsers() {
         }
       };
 
-      actionsWrap.appendChild(saveRolesBtn);
-      actionsWrap.appendChild(setPasswordBtn);
+      actionsWrap.appendChild(editBtn);
       actionsWrap.appendChild(logoutNowBtn);
       actionsWrap.appendChild(deleteBtn);
     } else {
+      const editBtn = createUserActionButton(USER_ACTION_ICONS.edit, "The root user cannot be edited here", {
+        disabled: true
+      });
+      actionsWrap.appendChild(editBtn);
       actionsWrap.appendChild(logoutNowBtn);
     }
     actionsTd.appendChild(actionsWrap);
@@ -2329,24 +2437,25 @@ async function loadUsers() {
 }
 
 document.querySelectorAll('input[name="new-user-role"]').forEach((input) => {
-  input.dataset.actorCanGrant = canGrantRole(input.value) ? "true" : "false";
-  input.dataset.originalChecked = "false";
-  input.dataset.lockedSelf = "false";
-  input.dataset.lockedRoot = "false";
+  setupAccessInput(input);
   input.addEventListener("change", () => {
-    syncAccessEditorState(document);
+    syncAccessEditorState(addUserModal || document);
   });
 });
 document.querySelectorAll('input[name="new-user-permission"]').forEach((input) => {
-  input.dataset.actorCanGrant = canGrantPermission(input.value) ? "true" : "false";
-  input.dataset.originalChecked = "false";
-  input.dataset.lockedSelf = "false";
-  input.dataset.lockedRoot = "false";
+  setupAccessInput(input);
   input.addEventListener("change", () => {
-    syncAccessEditorState(document);
+    syncAccessEditorState(addUserModal || document);
   });
 });
-syncAccessEditorState(document);
+getEditUserAccessInputs().forEach((input) => {
+  setupAccessInput(input);
+  input.addEventListener("change", () => {
+    syncAccessEditorState(editUserModal || document);
+  });
+});
+syncAccessEditorState(addUserModal || document);
+syncAccessEditorState(editUserModal || document);
 
 window.addEventListener(window.AppAuth?.SESSION_EVENT || "appauth:session", (event) => {
   const session = event.detail || null;
@@ -2361,7 +2470,14 @@ window.addEventListener(window.AppAuth?.SESSION_EVENT || "appauth:session", (eve
   document.querySelectorAll('input[name="new-user-permission"]').forEach((input) => {
     input.dataset.actorCanGrant = canGrantPermission(input.value, currentMaintenanceUser) ? "true" : "false";
   });
-  syncAccessEditorState(document);
+  getEditUserAccessInputs().forEach((input) => {
+    const isRoleInput = input.name === "edit-user-role";
+    input.dataset.actorCanGrant = isRoleInput
+      ? (canGrantRole(input.value, currentMaintenanceUser) ? "true" : "false")
+      : (canGrantPermission(input.value, currentMaintenanceUser) ? "true" : "false");
+  });
+  syncAccessEditorState(addUserModal || document);
+  syncAccessEditorState(editUserModal || document);
   updateVersionDisplays(session?.versions || currentVersions);
   if (canManageUsers(currentMaintenanceUser)) {
     void loadUsers();

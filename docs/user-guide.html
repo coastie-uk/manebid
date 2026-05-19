@@ -913,23 +913,19 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="section">
           <h2>Manage Users</h2>
           <ul class="compact-list">
-            <li><strong>User table:</strong> each row shows the access grid for <strong>Manage Items</strong>, <strong>Manage Payments</strong>, <strong>Manage Auctions</strong>, <strong>Slideshow</strong>, <strong>Manage Collections</strong>, <strong>Manage Bids</strong>, and <strong>Manage Users</strong>.</li>
+            <li><strong>User table:</strong> each row shows read-only ticks for <strong>Manage Items</strong>, <strong>Manage Payments</strong>, <strong>Manage Auctions</strong>, <strong>Slideshow</strong>, <strong>Manage Collections</strong>, <strong>Manage Bids</strong>, and <strong>Manage Users</strong>.</li>
             <li><strong>Permission dependencies:</strong> <strong>Manage Bids</strong> requires <strong>Manage Items</strong>, and <strong>Manage Users</strong> requires <strong>Manage Auctions</strong>.</li>
             <li><strong>Add User</strong> creates the initial password and assigns one or more roles or permissions in a single form.</li>
+            <li><strong>Edit User</strong> opens the selected user. Allows password and permissions to be edited.</li>
             <li><strong>Remote logout:</strong> maintenance can force another user out of all current sessions. That user is redirected to the shared login page with a remote logout message.</li>
           </ul>
 
           <h3>Manage Auctions User Action Icons</h3>
           <div class="icon-legend-grid">
             <div class="icon-legend-item">
-              <img class="icon-legend-asset" src="images/manage-auctions-action-user-save.svg" alt="Save access changes icon">
-              <strong>Save Access Changes</strong>
-              <span>Commit role and permission changes for an existing user.</span>
-            </div>
-            <div class="icon-legend-item">
-              <img class="icon-legend-asset" src="images/manage-auctions-action-user-password.svg" alt="Set password icon">
-              <strong>Set Password</strong>
-              <span>Reset the selected user's password.</span>
+              <img class="icon-legend-asset" src="images/manage-auctions-action-user-edit.svg" alt="Edit user icon">
+              <strong>Edit User</strong>
+              <span>Open the modal for access changes or password reset.</span>
             </div>
             <div class="icon-legend-item">
               <img class="icon-legend-asset" src="images/manage-auctions-action-user-logout.svg" alt="Remote logout icon">

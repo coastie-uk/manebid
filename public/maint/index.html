@@ -851,12 +851,101 @@
             </div>
           </div>
           <div id="add-user-access-note" class="user-access-note" hidden>
-            Some options are unavailable because you can't grant permissions that you don't currently have yourself.
+            Some options are unavailable because access grants are limited to permissions you hold.
           </div>
 
           <div class="maintenance-actions-row modal-actions-row">
             <button id="cancel-add-user" type="button" class="app-modal-close">Cancel</button>
             <button id="add-user-button" type="button">Add User</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="edit-user-modal" class="app-modal" hidden>
+        <div class="app-modal-card app-modal-card--wide">
+          <div class="app-modal-header">
+            <div>
+              <h3>Edit User</h3>
+              <p>Update account access or change the user's password.</p>
+            </div>
+            <button id="close-edit-user-modal" type="button" class="app-modal-close" aria-label="Close edit user dialog">Close</button>
+          </div>
+          <div class="maintenance-form-grid">
+            <label for="edit-user-username">Username</label>
+            <input type="text" id="edit-user-username" readonly autocomplete="username" />
+
+            <label for="edit-user-password">New Password</label>
+            <input type="password" id="edit-user-password" placeholder="New Password" autocomplete="new-password" />
+
+            <label for="edit-user-confirm-password">Confirm New Password</label>
+            <input type="password" id="edit-user-confirm-password" placeholder="Confirm New Password" autocomplete="new-password" />
+          </div>
+
+          <div class="maintenance-actions-row user-password-actions-row">
+            <button id="change-edit-user-password" type="button">Change Password</button>
+          </div>
+
+          <div class="user-access-catalog">
+            <div class="user-access-catalog-head">Access Options</div>
+            <div id="edit-user-roles" class="user-access-list">
+              <label class="user-access-item">
+                <span class="user-access-toggle">
+                  <input type="checkbox" name="edit-user-role" value="admin" />
+                  <span>Manage Items</span>
+                </span>
+                <span class="user-access-description">Create and edit lots, create exports</span>
+              </label>
+              <label class="user-access-item user-access-item--permission">
+                <span class="user-access-toggle">
+                  <input type="checkbox" id="edit-user-admin-bidding" name="edit-user-permission" value="admin_bidding" />
+                  <span>Manage Bids</span>
+                </span>
+                <span class="user-access-description">Depends on <strong>Manage Items</strong>; allows recording and retracting bids</span>
+              </label>
+              <label class="user-access-item">
+                <span class="user-access-toggle">
+                  <input type="checkbox" name="edit-user-role" value="cashier" />
+                  <span>Manage Payments</span>
+                </span>
+                <span class="user-access-description">Process checkout, record payments, and handle cashier workflows.</span>
+              </label>
+              <label class="user-access-item">
+                <span class="user-access-toggle">
+                  <input type="checkbox" name="edit-user-role" value="maintenance" />
+                  <span>Manage Auctions</span>
+                </span>
+                <span class="user-access-description">Use the maintenance console for setup, templates, backups, diagnostics, and system tasks.</span>
+              </label>
+              <label class="user-access-item user-access-item--permission">
+                <span class="user-access-toggle">
+                  <input type="checkbox" id="edit-user-manage-users" name="edit-user-permission" value="manage_users" />
+                  <span>Manage Users</span>
+                </span>
+                <span class="user-access-description">Depends on <strong>Manage Auctions</strong>; allows account creation, password resets, and access changes.</span>
+              </label>
+              <label class="user-access-item">
+                <span class="user-access-toggle">
+                  <input type="checkbox" name="edit-user-permission" value="live_feed" />
+                  <span>Manage Collections</span>
+                </span>
+                <span class="user-access-description">Manage item collection, view the live feed.</span>
+              </label>
+              <label class="user-access-item">
+                <span class="user-access-toggle">
+                  <input type="checkbox" name="edit-user-role" value="slideshow" />
+                  <span>Slideshow</span>
+                </span>
+                <span class="user-access-description">Open presentation and display view.</span>
+              </label>
+            </div>
+          </div>
+          <div id="edit-user-access-note" class="user-access-note" hidden>
+            Some options are unavailable because access changes are limited to permissions you hold.
+          </div>
+
+          <div class="maintenance-actions-row modal-actions-row">
+            <button id="cancel-edit-user" type="button" class="app-modal-close">Cancel</button>
+            <button id="save-edit-user-access" type="button">Save Access</button>
           </div>
         </div>
       </div>

@@ -107,16 +107,18 @@ function getGrantableRolesForUser(user) {
   return new Set(normaliseRoles(user?.roles));
 }
 
-function getUnauthorizedGrantedRoles(req, requestedRoles) {
+function getUnauthorizedGrantedRoles(req, requestedRoles, existingUser = null) {
   const actor = getCurrentRequestUser(req) || req.user;
   const grantableRoles = getGrantableRolesForUser(actor);
-  return requestedRoles.filter((role) => !grantableRoles.has(role));
+  const existingRoles = new Set(normaliseRoles(existingUser?.roles));
+  return requestedRoles.filter((role) => !existingRoles.has(role) && !grantableRoles.has(role));
 }
 
-function getUnauthorizedGrantedPermissions(req, requestedPermissions) {
+function getUnauthorizedGrantedPermissions(req, requestedPermissions, existingUser = null) {
   const actor = getCurrentRequestUser(req) || req.user;
   const grantablePermissions = getGrantablePermissionsForUser(actor);
-  return requestedPermissions.filter((permission) => !grantablePermissions.has(permission));
+  const existingPermissions = new Set(normalisePermissions(existingUser?.permissions, existingUser?.roles));
+  return requestedPermissions.filter((permission) => !existingPermissions.has(permission) && !grantablePermissions.has(permission));
 }
 
 function getUnauthorizedRemovedRoles(req, existingUser, requestedRoles) {
@@ -1799,14 +1801,18 @@ router.patch("/users/:username/access", requireManageUsers, (req, res) => {
     return res.status(404).json({ error: "User not found." });
   }
 
-  const unauthorizedRoles = getUnauthorizedGrantedRoles(req, roles);
+  if (target === ROOT_USERNAME) {
+    return res.status(403).json({ error: "The root user's access cannot be changed." });
+  }
+
+  const unauthorizedRoles = getUnauthorizedGrantedRoles(req, roles, existingUser);
   if (unauthorizedRoles.length > 0) {
     return res.status(403).json({
       error: `You can only grant roles you already have: ${unauthorizedRoles.join(", ")}.`
     });
   }
 
-  const unauthorizedPermissions = getUnauthorizedGrantedPermissions(req, permissions);
+  const unauthorizedPermissions = getUnauthorizedGrantedPermissions(req, permissions, existingUser);
   if (unauthorizedPermissions.length > 0) {
     return res.status(403).json({
       error: `You can only grant permissions you already have: ${unauthorizedPermissions.join(", ")}.`

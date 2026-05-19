@@ -20,6 +20,8 @@ const API_ROOT = `${API}/settlement`;
   const emptyDetailEl = document.getElementById('emptyDetail');
   const lotsTotalEl = document.getElementById('lotsTotal');
   const lotsPreviewStripEl = document.getElementById('lotsPreviewStrip');
+  const lotsSectionEl = document.getElementById('lotsSection');
+  const paymentStateHintEl = document.getElementById('paymentStateHint');
   const titleEl    = document.getElementById('title');
   const fingerprintDisplay = document.getElementById('fingerprintDisplay');
   const toggleFingerprintBtn = document.getElementById('toggleFingerprintBtn');
@@ -114,6 +116,23 @@ const API_ROOT = `${API}/settlement`;
     }
   };
 
+  function getResolvedTheme() {
+    return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+  }
+
+  function getPaymentStatus(bidder) {
+    const balance = roundCurrency(bidder?.balance || 0);
+    const paymentsTotal = roundCurrency(bidder?.payments_total || 0);
+    if (balance < 0) return 'overpaid';
+    if (balance === 0) return 'paid';
+    if (balance > 0 && paymentsTotal > 0) return 'part-paid';
+    return 'unpaid';
+  }
+
+  function getPaymentStatusClass(bidder) {
+    return `payment-state-${getPaymentStatus(bidder)}`;
+  }
+
   function formatBidderLabel(bidder, { prefix = false } = {}) {
     const paddle = bidder?.paddle_number == null ? '' : String(bidder.paddle_number);
     const name = String(bidder?.bidder_name || bidder?.name || '').trim();
@@ -133,6 +152,7 @@ const API_ROOT = `${API}/settlement`;
     return {
       auctionId: AUCTION_ID,
       auctionName: getCashierAuctionName(),
+      theme: getResolvedTheme(),
       showPictures,
       selectedBidder: selBidder
         ? {
@@ -328,6 +348,12 @@ const API_ROOT = `${API}/settlement`;
 
   function updatePaymentStateTooltip(isSettlementState) {
     const buttons = document.querySelectorAll('#payButtons button[data-method]');
+    if (paymentStateHintEl) {
+      paymentStateHintEl.hidden = isSettlementState;
+      paymentStateHintEl.textContent = isSettlementState
+        ? ''
+        : 'Payment methods are unavailable because this auction is not in settlement state.';
+    }
     buttons.forEach((btn) => {
       if (!isSettlementState) {
         btn.title = 'Payments require the auction to be in settlement state';
@@ -511,6 +537,16 @@ buttons.forEach(btn => {
   }
 });
 
+    if (AUCTION_STATUS !== 'settlement') {
+      buttons.forEach(btn => {
+        btn.disabled = true;
+      });
+      document.getElementById('payButtons')?.classList.add('disabled');
+      updatePaymentStateTooltip(false);
+    } else {
+      document.getElementById('payButtons')?.classList.remove('disabled');
+      updatePaymentStateTooltip(true);
+    }
 
   } catch (err) {
     showMessage(`[payments] Error while loading payment methods: ${err}`, "error");
@@ -520,6 +556,7 @@ buttons.forEach(btn => {
       btn.disabled = true;
       btn.classList.add('disabled');
     });
+    updatePaymentStateTooltip(AUCTION_STATUS === 'settlement');
   }
 }
 
@@ -529,7 +566,9 @@ buttons.forEach(btn => {
     bidderBody.innerHTML='';
     sortBidders(bidders).forEach(b=>{
       const tr=document.createElement('tr');
-      tr.className='bidder-row'+(b.balance===0?' bidder-paid':'');
+      tr.className=`bidder-row ${getPaymentStatusClass(b)}`;
+      if(b.balance===0) tr.classList.add('bidder-paid');
+      if(getPaymentStatus(b)==='part-paid') tr.classList.add('bidder-part-paid');
       if(b.balance<0) tr.classList.add('bidder-negative');
       tr.dataset.id=b.id;
       tr.innerHTML=`<td>${escapeHtml(formatBidderLabel(b))}</td><td>${money(b.balance)}</td>`;
@@ -552,6 +591,9 @@ buttons.forEach(btn => {
       if (emptyDetailEl) emptyDetailEl.style.display = 'block';
       titleEl.textContent='Select a bidder...';
       if (editBidderNameBtn) editBidderNameBtn.disabled = true;
+      if (lotsSectionEl) {
+        lotsSectionEl.classList.remove('payment-state-paid', 'payment-state-part-paid', 'payment-state-unpaid', 'payment-state-overpaid');
+      }
       fingerprintVisible = false;
       if (lotsTotalEl) lotsTotalEl.textContent = '';
       updateFingerprintDisplay();
@@ -600,7 +642,7 @@ buttons.forEach(btn => {
 
     if (AUCTION_STATUS === 'settlement') {
 document.getElementById('payButtons').classList.remove('disabled');
-document.querySelectorAll('#payButtons button[data-method]').forEach(btn => btn.disabled = false);
+document.querySelectorAll('#payButtons button[data-method]').forEach(btn => { btn.disabled = btn.style.display === 'none'; });
 document.querySelectorAll('.delPay').forEach(btn => btn.disabled = false);
 updatePaymentStateTooltip(true);
 
@@ -621,6 +663,11 @@ updateTotals();
   function renderLots(){
     lotsBody.innerHTML='';
     const lots = selBidder.lots || [];
+    const statusClass = getPaymentStatusClass(selBidder);
+    if (lotsSectionEl) {
+      lotsSectionEl.classList.remove('payment-state-paid', 'payment-state-part-paid', 'payment-state-unpaid', 'payment-state-overpaid');
+      lotsSectionEl.classList.add(statusClass);
+    }
     lots.forEach(l=>{
 
     const prc = l.test_bid != null ? `${money(l.hammer_price)} <b>[T]</b>` : money(l.hammer_price);
@@ -628,6 +675,7 @@ updateTotals();
     const photoUrl = l.photo_url || l.photoUrl || l.photo || '';
 
       const tr=document.createElement('tr');
+      tr.classList.add(statusClass);
       tr.innerHTML=`<td>${l.item_number}</td><td>${desc}</td><td>${prc}</td>`;
       if (photoUrl) tr.dataset.photoUrl = photoUrl;
       else delete tr.dataset.photoUrl;
@@ -823,9 +871,9 @@ overlay.querySelector('#amt').focus();
 
   }
 
-    // payment modal via buttons
+  // payment modal via buttons
   document.querySelectorAll('#payButtons button[data-method]').forEach(btn=>{
-    btn.onclick=()=>openPayModal(btn.dataset.method);
+    btn.onclick=()=>openPayModal(btn.dataset.method, btn.textContent.trim());
   });
 
   if (printReceiptBtn) {
@@ -840,17 +888,24 @@ overlay.querySelector('#amt').focus();
     };
   }
 
-  function openPayModal(method){
+  function openPayModal(method, methodLabel = ''){
     const tpl=document.getElementById('payTpl').content.cloneNode(true);
     const overlay=tpl.firstElementChild;document.body.appendChild(overlay);
-    overlay.querySelector('#modalTitle').textContent=`Add ${method} payment`;
+    const displayLabel = methodLabel || formatPaymentMethod(method);
+    overlay.querySelector('#modalTitle').textContent=`Add ${displayLabel} payment`;
     const amtIn=overlay.querySelector('#amt');
     const donationIn = overlay.querySelector('#donation');
     const balanceDue = roundCurrency(selBidder.balance || 0);
     amtIn.value=Math.max(0, balanceDue).toFixed(2);
     donationIn.value='0.00';
+    if (balanceDue <= 0) {
+      amtIn.value = '0.00';
+      amtIn.disabled = true;
+      amtIn.title = 'No item payment is due for this bidder';
+      amtIn.insertAdjacentHTML('afterend', '<div class="modal-field-hint">No item balance is due; only donations can be recorded.</div>');
+    }
 
-overlay.querySelector('#amt').focus();
+    (balanceDue <= 0 ? donationIn : amtIn).focus();
     const cancelButton = overlay.querySelector('#cancel');
     const okButton = overlay.querySelector('#ok');
     okButton.textContent = 'Make Payment';

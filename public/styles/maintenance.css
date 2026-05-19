@@ -791,13 +791,25 @@
   text-align: left;
 }
 
-#user-table td input[type="checkbox"] {
-  transform: scale(1.05);
-}
-
 #user-table td button {
   margin-right: 4px;
   margin-bottom: 4px;
+}
+
+.user-access-indicator {
+  align-items: center;
+  color: #8a94a3;
+  display: inline-flex;
+  font-size: 1rem;
+  font-weight: 700;
+  height: 24px;
+  justify-content: center;
+  line-height: 1;
+  width: 24px;
+}
+
+.user-access-indicator.is-enabled {
+  color: #166534;
 }
 
 .maintenance-user-actions {
@@ -805,6 +817,11 @@
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
+}
+
+.user-password-actions-row {
+  justify-content: flex-end;
+  margin-top: 10px;
 }
 
 .maintenance-mono-table {
@@ -1279,6 +1296,14 @@ footer {
   border-color: #87a8da;
   color: #ffffff;
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
+}
+
+:root[data-theme="dark"] .user-access-indicator {
+  color: #64748b;
+}
+
+:root[data-theme="dark"] .user-access-indicator.is-enabled {
+  color: #9ee6b8;
 }
 
 :root[data-theme="dark"] .maintenance-data-table th,

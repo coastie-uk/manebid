@@ -293,6 +293,11 @@ tbody tr:first-child td {
   color: #486256;
 }
 
+.bidder-part-paid {
+  background: #fff8df !important;
+  color: #6f5815;
+}
+
 .bidder-negative {
   background: #fff4ef !important;
   color: #9a4521;
@@ -382,6 +387,57 @@ tbody tr:first-child td {
   gap: 8px;
   margin-top: 12px;
   min-width: 0;
+}
+
+.payment-state-hint,
+.modal-field-hint {
+  margin-top: 8px;
+  color: #5f6b7a;
+  font-size: 0.9rem;
+}
+
+.payment-state-hint {
+  padding: 8px 10px;
+  border: 1px solid #e3d49c;
+  border-radius: 8px;
+  background: #fff8df;
+  color: #6f5815;
+}
+
+.modal-input:disabled {
+  background: #eef3f8;
+  color: #5f6b7a;
+  cursor: not-allowed;
+}
+
+#lotsTable tbody tr.payment-state-paid,
+#lotsSection.payment-state-paid .section-total {
+  background: #eef8f1;
+}
+
+#lotsTable tbody tr.payment-state-part-paid,
+#lotsSection.payment-state-part-paid .section-total {
+  background: #fff8df;
+}
+
+#lotsTable tbody tr.payment-state-overpaid,
+#lotsSection.payment-state-overpaid .section-total {
+  background: #fff4ef;
+}
+
+#lotsSection.payment-state-paid .table-wrap,
+#lotsSection.payment-state-paid .section-total {
+  border-color: #b9e4c5;
+}
+
+#lotsSection.payment-state-part-paid .table-wrap,
+#lotsSection.payment-state-part-paid .section-total {
+  border-color: #ead384;
+}
+
+#lotsSection.payment-state-overpaid .table-wrap,
+#lotsSection.payment-state-overpaid .section-total {
+  border-color: #efc2af;
 }
 
 .receipt-actions {
@@ -770,6 +826,12 @@ body.buyer-display-page {
   color: var(--admin-text);
 }
 
+:root[data-theme="dark"] body.buyer-display-page {
+  background:
+    radial-gradient(circle at top left, rgba(95, 159, 255, 0.08), transparent 34%),
+    linear-gradient(180deg, #0a111c 0%, var(--admin-page-bg) 100%);
+}
+
 :root[data-theme="dark"] .panel,
 :root[data-theme="dark"] .buyer-display-card {
   background: var(--admin-panel-bg);
@@ -831,20 +893,62 @@ body.buyer-display-page {
   color: #9fe3bc;
 }
 
+:root[data-theme="dark"] .bidder-part-paid {
+  background: #2b2612 !important;
+  color: #f2d479;
+}
+
 :root[data-theme="dark"] .bidder-negative {
   background: #2a1d14 !important;
   color: #f5bc8a;
 }
 
+:root[data-theme="dark"] #lotsTable tbody tr.payment-state-paid,
+:root[data-theme="dark"] #lotsSection.payment-state-paid .section-total {
+  background: #13251e;
+}
+
+:root[data-theme="dark"] #lotsTable tbody tr.payment-state-part-paid,
+:root[data-theme="dark"] #lotsSection.payment-state-part-paid .section-total {
+  background: #2b2612;
+}
+
+:root[data-theme="dark"] #lotsTable tbody tr.payment-state-overpaid,
+:root[data-theme="dark"] #lotsSection.payment-state-overpaid .section-total {
+  background: #2a1d14;
+}
+
+:root[data-theme="dark"] #lotsSection.payment-state-paid .table-wrap,
+:root[data-theme="dark"] #lotsSection.payment-state-paid .section-total {
+  border-color: #28583c;
+}
+
+:root[data-theme="dark"] #lotsSection.payment-state-part-paid .table-wrap,
+:root[data-theme="dark"] #lotsSection.payment-state-part-paid .section-total {
+  border-color: #6f5b1f;
+}
+
+:root[data-theme="dark"] #lotsSection.payment-state-overpaid .table-wrap,
+:root[data-theme="dark"] #lotsSection.payment-state-overpaid .section-total {
+  border-color: #764226;
+}
+
 :root[data-theme="dark"] .empty-state,
 :root[data-theme="dark"] .cashier-placeholder-copy,
 :root[data-theme="dark"] .panel-subtle,
+:root[data-theme="dark"] .modal-field-hint,
 :root[data-theme="dark"] .summary-card-label,
 :root[data-theme="dark"] .buyer-display-thumb figcaption,
 :root[data-theme="dark"] .buyer-display-thumb-more,
 :root[data-theme="dark"] .lot-preview-thumb figcaption,
 :root[data-theme="dark"] .lot-preview-thumb-more {
   color: var(--admin-muted);
+}
+
+:root[data-theme="dark"] .payment-state-hint {
+  background: #2b2612;
+  border-color: #6f5b1f;
+  color: #f2d479;
 }
 
 :root[data-theme="dark"] .modal-overlay {
@@ -862,6 +966,11 @@ body.buyer-display-page {
   background: #121d2d;
   border-color: #31425c;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.38);
+}
+
+:root[data-theme="dark"] .modal-input:disabled {
+  background: #182437;
+  color: var(--admin-muted);
 }
 
 :root[data-theme="dark"] .modal-label {

@@ -4,7 +4,7 @@
   const API = "/api";
   const REFRESH_MS = 10000;
   const BUYER_DISPLAY_STATE_KEY = "cashierBuyerDisplayState";
-  const CASHIER_ASSET_VERSION = window.__CASHIER_ASSET_VERSION__ || "2026-04-28-queue-mobile-1";
+  const CASHIER_ASSET_VERSION = window.__CASHIER_ASSET_VERSION__ || "2026-05-19-payments-ui-1";
 
   const $ = (id) => document.getElementById(id);
   const els = {
@@ -197,6 +197,10 @@
     return getAuctionById(getSelectedAuctionId());
   }
 
+  function getResolvedTheme() {
+    return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+  }
+
   function buildCashierUrl(auction) {
     const params = new URLSearchParams();
     params.set("auctionId", auction.id);
@@ -209,6 +213,7 @@
     return {
       auctionId: selectedAuction?.id || getRequestedAuctionId() || null,
       auctionName: selectedAuction?.full_name || "none selected",
+      theme: getResolvedTheme(),
       showPictures,
       selectedBidder: null
     };
@@ -242,10 +247,10 @@
   function getBuyerDisplayState() {
     if (typeof window.__getCashierBuyerDisplayStateImpl__ === "function") {
       const liveState = window.__getCashierBuyerDisplayStateImpl__();
-      if (liveState) return liveState;
+      if (liveState) return { ...liveState, theme: getResolvedTheme() };
     }
     if (window.__cashierBuyerDisplayStateCurrent__) {
-      return window.__cashierBuyerDisplayStateCurrent__;
+      return { ...window.__cashierBuyerDisplayStateCurrent__, theme: getResolvedTheme() };
     }
     return getBuyerDisplayFallbackState();
   }
@@ -253,12 +258,14 @@
   function buildBuyerDisplayHtml() {
     const currencySymbol = localStorage.getItem("currencySymbol") || "£";
     const uploadBase = "/api/uploads";
+    const currentTheme = getResolvedTheme();
     return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="${currentTheme}" style="color-scheme: ${currentTheme};">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Buyer Display</title>
+  <link rel="stylesheet" href="/styles/admin-styles.css?v=${encodeURIComponent(CASHIER_ASSET_VERSION)}">
   <link rel="stylesheet" href="/styles/settlement.css?v=${encodeURIComponent(CASHIER_ASSET_VERSION)}">
 </head>
 <body class="buyer-display-page">
@@ -286,6 +293,12 @@
       const THUMBNAIL_LIMIT = 6;
       let lastRenderedKey = null;
 
+      function applyTheme(theme) {
+        const resolvedTheme = theme === 'dark' ? 'dark' : 'light';
+        document.documentElement.dataset.theme = resolvedTheme;
+        document.documentElement.style.colorScheme = resolvedTheme;
+      }
+
       function getState() {
         try {
           if (window.opener && !window.opener.closed && typeof window.opener.__getCashierBuyerDisplayState__ === 'function') {
@@ -305,6 +318,7 @@
       }
 
       function render(state) {
+        if (state?.theme) applyTheme(state.theme);
         if (auctionEl) {
           auctionEl.textContent = state?.auctionName || 'Buyer Display';
         }
