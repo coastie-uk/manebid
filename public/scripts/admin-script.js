@@ -2687,6 +2687,37 @@ document.addEventListener("DOMContentLoaded", function () {
         menu.querySelector(".item-context-menu-action:not(:disabled)")?.focus({ preventScroll: true });
     }
 
+    function jumpToMessagingItem({ auctionId, itemId } = {}) {
+        const targetAuctionId = Number(auctionId);
+        const targetItemId = Number(itemId);
+        const currentAuctionId = Number(selectedAuctionId);
+
+        if (!Number.isInteger(targetAuctionId) || targetAuctionId <= 0 || !Number.isInteger(targetItemId) || targetItemId <= 0) {
+            return { ok: false, message: "Item reference is not valid." };
+        }
+        if (targetAuctionId !== currentAuctionId) {
+            return { ok: false, message: "That item is in a different selected auction." };
+        }
+
+        const row = Array.from(itemsTableBody.querySelectorAll("tr"))
+            .find(candidate => Number(candidate.dataset.itemId) === targetItemId);
+        if (!row) {
+            return { ok: false, message: "That item is not visible in the current item table." };
+        }
+
+        row.scrollIntoView({ block: "center", behavior: "smooth" });
+        row.classList.remove("item-row--message-target");
+        void row.offsetWidth;
+        row.classList.add("item-row--message-target");
+        window.setTimeout(() => row.classList.remove("item-row--message-target"), 2600);
+        return { ok: true };
+    }
+
+    window.AppItems = {
+        ...(window.AppItems || {}),
+        jumpToItem: jumpToMessagingItem
+    };
+
 
     async function loadItems(options = {}) {
         const { suppressErrors = false, rethrow = false } = options;

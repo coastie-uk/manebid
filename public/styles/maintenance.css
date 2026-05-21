@@ -139,6 +139,38 @@
   gap: 8px;
 }
 
+.maintenance-stat-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.maintenance-stat-card {
+  background: #fff;
+  border: 1px solid #dbe6f5;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.maintenance-stat-card span {
+  color: #5f6b7a;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.maintenance-stat-card strong {
+  color: #24436b;
+  font-size: 1.1rem;
+}
+
+.messaging-cache-actions {
+  margin-top: 12px;
+}
+
 .maintenance-form-grid label {
   color: #1b2430;
   font-weight: 700;
@@ -1320,7 +1352,8 @@ footer {
 :root[data-theme="dark"] .integrity-problem-card,
 :root[data-theme="dark"] .integrity-fix-card,
 :root[data-theme="dark"] .integrity-detail-stat,
-:root[data-theme="dark"] .maintenance-detail-stat {
+:root[data-theme="dark"] .maintenance-detail-stat,
+:root[data-theme="dark"] .maintenance-stat-card {
   background: #0f172a;
   border-color: #334155;
 }
@@ -1334,10 +1367,15 @@ footer {
 :root[data-theme="dark"] .integrity-fix-meta,
 :root[data-theme="dark"] .integrity-detail-label,
 :root[data-theme="dark"] .maintenance-detail-label,
+:root[data-theme="dark"] .maintenance-stat-card span,
 :root[data-theme="dark"] .user-access-catalog-head,
 :root[data-theme="dark"] .user-access-description,
 :root[data-theme="dark"] .maintenance-inline-list {
   color: #94a3b8;
+}
+
+:root[data-theme="dark"] .maintenance-stat-card strong {
+  color: #dbeafe;
 }
 
 :root[data-theme="dark"] .user-access-item {

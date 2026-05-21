@@ -106,6 +106,42 @@ function reqNum(obj, key, min = -Infinity, max = Infinity ) {
   return v;
 }
 
+function optBool(obj, key, defaultValue = false) {
+  if (!Object.prototype.hasOwnProperty.call(obj, key)) return defaultValue;
+  const v = obj[key];
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'string') {
+    const normalized = v.trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  }
+  throw new Error(`Invalid boolean: ${key}`);
+}
+
+function optNum(obj, key, defaultValue, min = -Infinity, max = Infinity) {
+  if (!Object.prototype.hasOwnProperty.call(obj, key)) return defaultValue;
+  const v = obj[key];
+  if (typeof v !== 'number' || !Number.isFinite(v)) {
+    throw new Error(`Invalid number: ${key}`);
+  }
+  if (v < min || v > max) {
+    throw new Error(`Number ${key} is out of bounds: ${min} <= ${v} <= ${max}`);
+  }
+  return v;
+}
+
+function optStr(obj, key, defaultValue, minLen = 1, maxLen = Infinity) {
+  if (!Object.prototype.hasOwnProperty.call(obj, key)) return defaultValue;
+  const v = obj[key];
+  if (typeof v !== 'string' || v.trim() === '') {
+    throw new Error(`Invalid string: ${key}`);
+  }
+  if (v.length < minLen || v.length > maxLen) {
+    throw new Error(`String ${key} length is out of bounds: ${minLen} <= ${v.length} <= ${maxLen}`);
+  }
+  return v;
+}
+
 
 
 let cfg;
@@ -134,6 +170,13 @@ try {
   const LOGIN_LOCKOUT_AFTER = reqNum(json, 'LOGIN_LOCKOUT_AFTER', 1, 1000);
   const LOGIN_LOCKOUT = reqNum(json, 'LOGIN_LOCKOUT', 1, 86400); // in seconds
   const SERVICE_NAME = reqStr(json, 'SERVICE_NAME', 1, 100); // e.g., "Auction_Backend"
+  const MESSAGING_ENABLED = optBool(json, 'MESSAGING_ENABLED', true);
+  const MESSAGING_MAX_MESSAGES = optNum(json, 'MESSAGING_MAX_MESSAGES', 1000, 1, 100000);
+  const MESSAGING_MAX_CACHE_BYTES = optNum(json, 'MESSAGING_MAX_CACHE_BYTES', 1024 * 1024, 1024, 50 * 1024 * 1024);
+  const MESSAGING_MAX_MESSAGE_CHARS = optNum(json, 'MESSAGING_MAX_MESSAGE_CHARS', 500, 1, 5000);
+  const MESSAGING_OPEN_POLL_MS = optNum(json, 'MESSAGING_OPEN_POLL_MS', 3000, 1000, 60000);
+  const MESSAGING_PRESENCE_TTL_MS = optNum(json, 'MESSAGING_PRESENCE_TTL_MS', 90000, 5000, 3600000);
+  const MESSAGING_PERSISTENCE_FILE = optStr(json, 'MESSAGING_PERSISTENCE_FILE', path.join(DB_PATH, 'operator-messages.json'));
   const ALLOWED_ORIGINS = Array.isArray(json.ALLOWED_ORIGINS)
     ? json.ALLOWED_ORIGINS
         .filter((v) => typeof v === 'string')
@@ -169,6 +212,13 @@ try {
     LOGIN_LOCKOUT_AFTER,
     LOGIN_LOCKOUT,
     SERVICE_NAME,
+    MESSAGING_ENABLED,
+    MESSAGING_MAX_MESSAGES,
+    MESSAGING_MAX_CACHE_BYTES,
+    MESSAGING_MAX_MESSAGE_CHARS,
+    MESSAGING_OPEN_POLL_MS,
+    MESSAGING_PRESENCE_TTL_MS,
+    MESSAGING_PERSISTENCE_FILE,
     ALLOWED_ORIGINS,
     ENABLE_CORS,
 

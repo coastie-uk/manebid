@@ -196,6 +196,13 @@ Below is a description of each setting:
 | `LOGIN_LOCKOUT_AFTER` | number | `8` | Failed login attempts before lockout. Range: **1–1000**. |
 | `LOGIN_LOCKOUT` | number | `600` | Lockout duration in seconds. Range: **1–86400**. |
 | `SERVICE_NAME` | text | `"auction-backend"` | Service name used in logs/process metadata. Length **1–100** characters. |
+| `MESSAGING_ENABLED` | boolean | `true` | Enable operator messaging on management pages. |
+| `MESSAGING_MAX_MESSAGES` | number | `1000` | Maximum number of operator messages kept in the backend message cache. Range: **1–100000**. |
+| `MESSAGING_MAX_CACHE_BYTES` | number | `1048576` | Maximum estimated bytes kept in the backend message cache. Range: **1024–52428800**. |
+| `MESSAGING_MAX_MESSAGE_CHARS` | number | `500` | Maximum length of one operator message in characters. Range: **1–5000**. |
+| `MESSAGING_OPEN_POLL_MS` | number | `3000` | Poll interval in milliseconds while the operator messaging modal is open. Range: **1000–60000**. |
+| `MESSAGING_PRESENCE_TTL_MS` | number | `90000` | How long in milliseconds a recent messaging poll counts a user as online. Range: **5000–3600000**. |
+| `MESSAGING_PERSISTENCE_FILE` | text | `"/var/lib/auction/operator-messages.json"` | File used to persist operator message history across backend restarts. Defaults to `operator-messages.json` in `DB_PATH` if omitted. |
 | `ENABLE_CORS` | boolean | `false` | Enable CORS handling. |
 | `ALLOWED_ORIGINS` | list | `["localhost:3000", "example.com:3000"]` | Allowed origins when CORS is enabled. Each entry is trimmed; empty strings are ignored. |
 
@@ -378,6 +385,7 @@ The default setup assumes that frontend and backend are running on the same serv
 
 - Reset passwords
 - Remove all users (apart from the root user)
+- Remove test-generated users with `pt_`, `mt_`, or `bt_` username prefixes after reviewing the matched list
 - Clear the audit log
 - Reset the database (clears bidders, auctions, items, payments, and payment intents). Item counters are not reset to maintain alignment with the audit log
 - Reset the database **and** counters (effectively results in a new database, but with the existing users)

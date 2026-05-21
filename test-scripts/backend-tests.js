@@ -423,6 +423,194 @@ console.log(`Created test auction id=${testData.auctionId} public_id=${testData.
   });
 }, { timeout: 10000 });
 
+addTest("B-002a","operator messaging lifecycle", async () => {
+  const clear = await fetchJson(`${baseUrl}/maintenance/messages/clear`, {
+    method: "POST",
+    headers: authHeaders(tokens.maintenance, { "Content-Type": "application/json" }),
+    body: JSON.stringify({})
+  });
+  await expectStatus(clear.res, 200);
+
+  const adminStatus = await fetchJson(`${baseUrl}/messages/status`, {
+    headers: authHeaders(tokens.admin)
+  });
+  await expectStatus(adminStatus.res, 200);
+  assert.equal(adminStatus.json?.enabled, true, "Messaging should be enabled for tests");
+  const maxChars = Number(adminStatus.json?.config?.max_message_chars || 500);
+  assert.ok(adminStatus.json?.config?.persistence_file, "Expected messaging persistence file config");
+  assert.ok(adminStatus.json?.stats?.persistence?.loaded, "Expected messaging persistence to be loaded");
+  assert.ok(adminStatus.json?.stats?.persistence?.database_id, "Expected messaging persistence database id");
+
+  const users = await fetchJson(`${baseUrl}/messages/users`, {
+    headers: authHeaders(tokens.admin)
+  });
+  await expectStatus(users.res, 200);
+  const usernames = new Set((users.json?.users || []).map(user => user.username));
+  assert.ok(usernames.has(managedUsers.cashier.username), "Expected cashier recipient");
+  assert.ok(usernames.has(managedUsers.maintenance.username), "Expected maintenance recipient");
+  assert.ok(usernames.has(managedUsers.liveFeedOnly.username), "Expected live-feed recipient");
+  assert.ok(!usernames.has(managedUsers.admin.username), "Current user should not be listed");
+  assert.ok(!usernames.has(managedUsers.slideshow.username), "Slideshow-only user should not be listed");
+
+  const body = `Can you check ${managedUsers.cashier.username}?`;
+  const send = await fetchJson(`${baseUrl}/messages`, {
+    method: "POST",
+    headers: authHeaders(tokens.admin, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ to: managedUsers.cashier.username, body })
+  });
+  await expectStatus(send.res, 201);
+  assert.equal(send.json?.message?.body, body);
+  assert.equal(send.json?.message?.direction, "outgoing");
+  assert.equal(send.json?.message?.attention, false, "Default messages should not request attention");
+
+  const postSendStatus = await fetchJson(`${baseUrl}/messages/status`, {
+    headers: authHeaders(tokens.admin)
+  });
+  await expectStatus(postSendStatus.res, 200);
+  assert.ok(
+    postSendStatus.json?.stats?.persistence?.dirty || postSendStatus.json?.stats?.persistence?.last_saved_at,
+    "Expected message send to be reflected in persistence state"
+  );
+
+  const cashierStatus = await fetchJson(`${baseUrl}/messages/status`, {
+    headers: authHeaders(tokens.cashier)
+  });
+  await expectStatus(cashierStatus.res, 200);
+  assert.equal(cashierStatus.json?.unread_by_user?.[managedUsers.admin.username], 1);
+
+  const cashierUsers = await fetchJson(`${baseUrl}/messages/users`, {
+    headers: authHeaders(tokens.cashier)
+  });
+  await expectStatus(cashierUsers.res, 200);
+  const adminRecipient = (cashierUsers.json?.users || []).find(user => user.username === managedUsers.admin.username);
+  assert.equal(adminRecipient?.unread_count, 1, "Expected unread badge on sender");
+  assert.equal(typeof adminRecipient?.online, "boolean", "Expected presence flag");
+
+  const cashierThread = await fetchJson(`${baseUrl}/messages/thread/${encodeURIComponent(managedUsers.admin.username)}`, {
+    headers: authHeaders(tokens.cashier)
+  });
+  await expectStatus(cashierThread.res, 200);
+  assert.equal(cashierThread.json?.messages?.length, 1);
+  assert.equal(cashierThread.json.messages[0].direction, "incoming");
+  assert.equal(cashierThread.json.messages[0].body, body);
+
+  const cashierReadStatus = await fetchJson(`${baseUrl}/messages/status`, {
+    headers: authHeaders(tokens.cashier)
+  });
+  await expectStatus(cashierReadStatus.res, 200);
+  assert.equal(cashierReadStatus.json?.unread_total, 0);
+
+  const adminThread = await fetchJson(`${baseUrl}/messages/thread/${encodeURIComponent(managedUsers.cashier.username)}`, {
+    headers: authHeaders(tokens.admin)
+  });
+  await expectStatus(adminThread.res, 200);
+  assert.ok(adminThread.json?.messages?.[0]?.read_at, "Expected outgoing read indicator after recipient viewed thread");
+
+  const broadcastBody = `Broadcast check ${Date.now()}`;
+  const broadcast = await fetchJson(`${baseUrl}/messages`, {
+    method: "POST",
+    headers: authHeaders(tokens.admin, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ to: "__all__", body: broadcastBody })
+  });
+  await expectStatus(broadcast.res, 201);
+  assert.equal(broadcast.json?.broadcast, true, "Expected broadcast send marker");
+  assert.ok(Number(broadcast.json?.recipient_count || 0) >= 3, "Expected broadcast to copy to multiple recipients");
+  assert.equal(broadcast.json?.message?.broadcast, true, "Expected returned message to be tagged as broadcast");
+
+  const maintenanceBroadcastThread = await fetchJson(`${baseUrl}/messages/thread/${encodeURIComponent(managedUsers.admin.username)}`, {
+    headers: authHeaders(tokens.maintenance)
+  });
+  await expectStatus(maintenanceBroadcastThread.res, 200);
+  assert.ok(
+    (maintenanceBroadcastThread.json?.messages || []).some(message => message.body === broadcastBody && message.broadcast === true && message.direction === "incoming"),
+    "Expected broadcast copy in recipient conversation"
+  );
+
+  const adminBroadcastThread = await fetchJson(`${baseUrl}/messages/thread/${encodeURIComponent(managedUsers.cashier.username)}`, {
+    headers: authHeaders(tokens.admin)
+  });
+  await expectStatus(adminBroadcastThread.res, 200);
+  assert.ok(
+    (adminBroadcastThread.json?.messages || []).some(message => message.body === broadcastBody && message.broadcast === true && message.direction === "outgoing"),
+    "Expected broadcast copy in sender's per-user conversation"
+  );
+
+  const attentionBody = `Attention check ${Date.now()}`;
+  const attentionSend = await fetchJson(`${baseUrl}/messages`, {
+    method: "POST",
+    headers: authHeaders(tokens.admin, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ to: managedUsers.maintenance.username, body: attentionBody, attention: true })
+  });
+  await expectStatus(attentionSend.res, 201);
+  assert.equal(attentionSend.json?.message?.attention, true, "Expected attention flag on send response");
+
+  const maintenanceAttentionStatus = await fetchJson(`${baseUrl}/messages/status`, {
+    headers: authHeaders(tokens.maintenance)
+  });
+  await expectStatus(maintenanceAttentionStatus.res, 200);
+  assert.equal(maintenanceAttentionStatus.json?.unread_attention_by_user?.[managedUsers.admin.username], 1);
+  assert.equal(maintenanceAttentionStatus.json?.latest_attention_from, managedUsers.admin.username);
+  assert.equal(maintenanceAttentionStatus.json?.latest_attention_id, attentionSend.json?.message?.id);
+
+  const maintenanceAttentionThread = await fetchJson(`${baseUrl}/messages/thread/${encodeURIComponent(managedUsers.admin.username)}`, {
+    headers: authHeaders(tokens.maintenance)
+  });
+  await expectStatus(maintenanceAttentionThread.res, 200);
+  assert.ok(
+    (maintenanceAttentionThread.json?.messages || []).some(message => message.body === attentionBody && message.attention === true),
+    "Expected attention message in recipient thread"
+  );
+
+  const attentionBroadcastBody = `Attention broadcast ${Date.now()}`;
+  const attentionBroadcast = await fetchJson(`${baseUrl}/messages`, {
+    method: "POST",
+    headers: authHeaders(tokens.admin, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ to: "__all__", body: attentionBroadcastBody, attention: true })
+  });
+  await expectStatus(attentionBroadcast.res, 201);
+  assert.equal(attentionBroadcast.json?.broadcast, true);
+  assert.ok((attentionBroadcast.json?.messages || []).every(message => message.attention === true), "Expected all broadcast copies to request attention");
+
+  const sanitizedSend = await fetchJson(`${baseUrl}/messages`, {
+    method: "POST",
+    headers: authHeaders(tokens.admin, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ to: managedUsers.cashier.username, body: "<b>Safe message text</b>&amp;" })
+  });
+  await expectStatus(sanitizedSend.res, 201);
+  assert.equal(sanitizedSend.json?.message?.body, "Safe message text", "Expected HTML tags and entities to be removed before storage");
+
+  const tooLong = await fetchJson(`${baseUrl}/messages`, {
+    method: "POST",
+    headers: authHeaders(tokens.admin, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ to: managedUsers.cashier.username, body: "x".repeat(maxChars + 1) })
+  });
+  await expectStatus(tooLong.res, 400);
+
+  const sendToSlideshow = await fetchJson(`${baseUrl}/messages`, {
+    method: "POST",
+    headers: authHeaders(tokens.admin, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ to: managedUsers.slideshow.username, body: "Hello" })
+  });
+  await expectStatus(sendToSlideshow.res, 404);
+
+  const itemLookup = await fetchJson(`${baseUrl}/messages/items?auction_id=${encodeURIComponent(testData.auctionId)}&q=${encodeURIComponent("Backend Test Item A")}`, {
+    headers: authHeaders(tokens.admin)
+  });
+  await expectStatus(itemLookup.res, 200);
+  assert.ok(Array.isArray(itemLookup.json?.items), "Expected item array");
+  assert.ok(itemLookup.json.items.some(item => String(item.reference_text || "").includes("Backend Test Item A")), "Expected matching item reference");
+  const itemReference = String(itemLookup.json.items.find(item => String(item.reference_text || "").includes("Backend Test Item A"))?.reference_text || "");
+  const visibleItemReference = itemReference.replace(/\s*\[item:\d+:\d+\]\s*$/, "");
+  assert.ok(/^.+: Item #.+: Backend Test Item A/.test(visibleItemReference), "Expected auction name, item number, and description in visible item reference");
+  assert.ok(!visibleItemReference.includes(`Auction ${testData.auctionId}`), "Visible item reference should not expose auction id");
+  assert.ok(!visibleItemReference.includes("(ID "), "Visible item reference should not expose item id");
+
+  const slideshowDenied = await fetchJson(`${baseUrl}/messages/status`, {
+    headers: authHeaders(tokens.slideshow)
+  });
+  await expectStatus(slideshowDenied.res, 403);
+});
+
 // /login
 addTest("B-003","POST /login success admin", async () => {
   const { res, json } = await fetchJson(`${baseUrl}/login`, {
@@ -2216,7 +2404,7 @@ addTest("B-087","POST /maintenance/generate-bids failure missing auction id", as
 
 // /auctions/:auctionId/newitem
 addTest("B-088","POST /auctions/:auctionId/newitem rate limit reset", async () => {
-  await sleep(5000); // Wait to ensure the short test-server rate limit window has passed.
+  await sleep(7000); // Wait to ensure the short test-server rate limit window has passed.
   
   await setAuctionStatus("setup");
   const form = new FormData();

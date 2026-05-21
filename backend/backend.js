@@ -17,6 +17,11 @@ var strftime = require('strftime');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const app = express();
+const { logLevels, setLogLevel, logFromRequest, createLogger, log } = require('./logger');
+
+log('General', logLevels.INFO, '~~ Starting up Auction backend ~~');
+log('Logger', logLevels.INFO, `Logging framework initialized. `);
+
 const { audit, auditTypes } = require('./middleware/audit');
 const { sanitiseText } = require('./middleware/sanitiseText');
 const {
@@ -70,11 +75,10 @@ const {
 } = require('./middleware/authenticateRole');
 
 const maintenanceRoutes = require('./maintenance');
-const { logLevels, setLogLevel, logFromRequest, createLogger, log } = require('./logger');
+const messaging = require('./messaging');
 const { roundCurrency, SETTLEMENT_AMOUNT_SQL } = require('./payment-utils');
 
-log('General', logLevels.INFO, '~~ Starting up Auction backend ~~');
-log('Logger', logLevels.INFO, `Logging framework initialized. `);
+
 
 const sessionTime = 12 * 60 * 60; // 12 hours
 
@@ -392,6 +396,17 @@ app.use((req, res, next) => {
 
 // Must come after body parsers
 require('./phase1-patch')(app);
+
+const messagingAccess = authenticateAccess({
+    roles: ['admin', 'maintenance', 'cashier'],
+    permissions: ['live_feed']
+});
+
+app.get('/messages/status', messagingAccess, messaging.handleStatus);
+app.get('/messages/users', messagingAccess, messaging.handleUsers);
+app.get('/messages/thread/:username', messagingAccess, messaging.handleThread);
+app.post('/messages', messagingAccess, messaging.handleSend);
+app.get('/messages/items', messagingAccess, messaging.handleItems);
 
 
 // Mount API

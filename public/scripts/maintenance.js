@@ -66,6 +66,17 @@ const createBackupLog = document.getElementById("create-backup-log");
 const refreshBackupsButton = document.getElementById("refresh-backups");
 const backupTotalSize = document.getElementById("backup-total-size");
 const backupTableBody = document.getElementById("backup-table-body");
+const refreshMessagingStatsButton = document.getElementById("refresh-messaging-stats");
+const exportMessagingCacheButton = document.getElementById("export-messaging-cache");
+const clearMessagingCacheButton = document.getElementById("clear-messaging-cache");
+const messagingEnabledStatus = document.getElementById("messaging-enabled-status");
+const messagingMessageCount = document.getElementById("messaging-message-count");
+const messagingCacheSize = document.getElementById("messaging-cache-size");
+const messagingMessageLimit = document.getElementById("messaging-message-limit");
+const messagingCacheLimit = document.getElementById("messaging-cache-limit");
+const messagingCharLimit = document.getElementById("messaging-char-limit");
+const messagingPersistenceStatus = document.getElementById("messaging-persistence-status");
+const messagingPersistenceSaved = document.getElementById("messaging-persistence-saved");
 const backupInfoModal = document.getElementById("backup-info-modal");
 const closeBackupInfoModalButton = document.getElementById("close-backup-info-modal");
 const backupRestoreModal = document.getElementById("backup-restore-modal");
@@ -547,6 +558,91 @@ async function loadManagedBackups({ preserveSelection = true } = {}) {
   }
 }
 
+function renderMessagingStats(data = {}) {
+  const stats = data.stats || {};
+  const config = data.config || {};
+  const persistence = stats.persistence || {};
+  const enabled = config.enabled ?? stats.enabled;
+  if (messagingEnabledStatus) messagingEnabledStatus.textContent = enabled ? "Yes" : "No";
+  if (messagingMessageCount) messagingMessageCount.textContent = String(stats.message_count ?? 0);
+  if (messagingCacheSize) messagingCacheSize.textContent = formatBytes(stats.estimated_bytes);
+  if (messagingMessageLimit) messagingMessageLimit.textContent = String(stats.max_messages ?? config.max_messages ?? 0);
+  if (messagingCacheLimit) messagingCacheLimit.textContent = formatBytes(stats.max_cache_bytes ?? config.max_cache_bytes);
+  if (messagingCharLimit) messagingCharLimit.textContent = String(stats.max_message_chars ?? config.max_message_chars ?? 0);
+  if (messagingPersistenceStatus) {
+    messagingPersistenceStatus.textContent = persistence.last_error
+      ? "Error"
+      : persistence.dirty
+        ? "Pending save"
+        : persistence.loaded
+          ? "Saved"
+          : "Not loaded";
+  }
+  if (messagingPersistenceSaved) messagingPersistenceSaved.textContent = persistence.last_saved_at || "Never";
+}
+
+async function loadMessagingStats({ announce = false } = {}) {
+  if (!token || !messagingEnabledStatus) return;
+
+  const res = await fetch(`${API}/maintenance/messages`, {
+    headers: { Authorization: token }
+  });
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    showMessage(data.error || "Failed to load messaging status.", "error");
+    return;
+  }
+
+  renderMessagingStats(data);
+  if (announce) showMessage("Messaging status refreshed.", "success");
+}
+
+async function clearMessagingCache() {
+  const confirmed = await confirmMaintenanceAction("Clear all stored operator messages from backend memory?");
+  if (!confirmed) return;
+
+  const res = await fetch(`${API}/maintenance/messages/clear`, {
+    method: "POST",
+    headers: {
+      Authorization: token,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({})
+  });
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    showMessage(data.error || "Failed to clear message cache.", "error");
+    return;
+  }
+
+  renderMessagingStats(data);
+  window.AppMessaging?.refreshStatus?.();
+  showMessage(`Cleared ${data.deleted || 0} message(s).`, "success");
+}
+
+async function exportMessagingCache() {
+  const res = await fetch(`${API}/maintenance/messages/export.csv`, {
+    headers: { Authorization: token }
+  });
+
+  if (!res.ok) {
+    showMessage("Failed to export message cache.", "error");
+    return;
+  }
+
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "operator_messages.csv";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 async function selectManagedBackup(backupId, { silent = false } = {}) {
   if (!backupId) {
     selectedBackupId = null;
@@ -648,6 +744,10 @@ function setActiveTab(tabId, { persist = true } = {}) {
 
   if (persist) {
     localStorage.setItem(MAINTENANCE_TAB_KEY, resolvedTabId);
+  }
+
+  if (resolvedTabId === "messaging") {
+    void loadMessagingStats();
   }
 }
 
@@ -1387,6 +1487,16 @@ function bindMaintenanceShell() {
     }
   });
 
+  refreshMessagingStatsButton?.addEventListener("click", () => {
+    void loadMessagingStats({ announce: true });
+  });
+  exportMessagingCacheButton?.addEventListener("click", () => {
+    void exportMessagingCache();
+  });
+  clearMessagingCacheButton?.addEventListener("click", () => {
+    void clearMessagingCache();
+  });
+
   closeEditAuctionModalButton?.addEventListener("click", closeEditAuctionModal);
   cancelEditAuctionButton?.addEventListener("click", closeEditAuctionModal);
   editAuctionModal?.addEventListener("click", (event) => {
@@ -1617,6 +1727,9 @@ async function checkToken() {
     }
     startAutoRefresh();
     loadEnabledPaymentMethods();
+    if (localStorage.getItem(MAINTENANCE_TAB_KEY) === "messaging") {
+      loadMessagingStats();
+    }
     updateVersionDisplays(session.versions);
   } else {
     logOut();
@@ -3765,6 +3878,9 @@ function startAutoRefresh() {
       loadPptxImageList();
       loadManagedBackups();
       loadUsers();
+      if (localStorage.getItem(MAINTENANCE_TAB_KEY) === "messaging") {
+        loadMessagingStats();
+      }
 
     } else {
     }
@@ -3777,6 +3893,9 @@ document.addEventListener("visibilitychange", () => {
     loadPptxImageList();
     loadManagedBackups();
     loadUsers();
+    if (localStorage.getItem(MAINTENANCE_TAB_KEY) === "messaging") {
+      loadMessagingStats();
+    }
 
   }
 });

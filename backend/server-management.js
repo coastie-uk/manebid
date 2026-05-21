@@ -1,6 +1,6 @@
 /**
  * @file        server-management.js
- * @description Small utility for password reset, audit maintenance, database reset, and root-only user reset.
+ * @description Small utility for password reset, audit maintenance, database reset, and user cleanup.
  * @author      Chris Staples
  * @license     GPL3
  */
@@ -14,6 +14,7 @@ const { PASSWORD_MIN_LENGTH } = require("./config");
 const { getUserByUsername, setUserPassword, normaliseUsername, ROOT_USERNAME } = require("./users");
 
 const linuxusername = process.env.USER || "Unknown";
+const TEST_USER_PREFIXES = ["pt_", "mt_", "bt_"];
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -26,7 +27,8 @@ const MENU_OPTIONS = [
   { key: "3", aliases: ["reset", "db"], label: "Reset database", action: () => resetDatabase(false) },
   { key: "4", aliases: ["reset-all", "counters"], label: "Reset database including counters", action: () => resetDatabase(true) },
   { key: "5", aliases: ["users", "delete-users"], label: `Remove all users except "${ROOT_USERNAME}"`, action: removeAllNonRootUsers },
-  { key: "6", aliases: ["exit", "quit", "q"], label: "Exit", action: exitProgram }
+  { key: "6", aliases: ["test-users", "delete-test-users"], label: "Remove test-generated users", action: removeTestUsers },
+  { key: "7", aliases: ["exit", "quit", "q"], label: "Exit", action: exitProgram }
 ];
 
 process.on("SIGINT", () => {
@@ -196,6 +198,62 @@ async function removeAllNonRootUsers() {
     });
   } catch (err) {
     log("Server", logLevels.ERROR, `Error removing non-root users: ${err.message}`);
+  }
+}
+
+function getTestUserWhereClause() {
+  const clauses = TEST_USER_PREFIXES.map(() => "lower(username) LIKE ? ESCAPE '\\'");
+  return {
+    sql: `(${clauses.join(" OR ")})`,
+    params: TEST_USER_PREFIXES.map((prefix) => `${prefix.replace("_", "\\_")}%`)
+  };
+}
+
+function listTestUsers() {
+  const testUsers = getTestUserWhereClause();
+  return db.prepare(`
+    SELECT username
+      FROM users
+     WHERE ${testUsers.sql}
+     ORDER BY username COLLATE NOCASE
+  `).all(...testUsers.params);
+}
+
+async function removeTestUsers() {
+  try {
+    const users = listTestUsers();
+    console.log(`Matched ${users.length} test-generated user(s) using prefixes ${TEST_USER_PREFIXES.join(", ")}.`);
+    users.forEach((user) => console.log(`- ${user.username}`));
+
+    if (!users.length) return;
+
+    const confirmed = await promptForConfirmation(
+      "Type `delete` to remove these test-generated users: ",
+      "delete"
+    );
+
+    if (!confirmed) {
+      console.log("Test user removal operation cancelled.");
+      return;
+    }
+
+    const testUsers = getTestUserWhereClause();
+    const removeTestUsersTx = db.transaction(() => {
+      return db.prepare(`
+        DELETE FROM users
+         WHERE ${testUsers.sql}
+      `).run(...testUsers.params);
+    });
+    const result = removeTestUsersTx();
+    log("Server", logLevels.INFO, `Deleted ${result.changes} test-generated user(s).`);
+    audit("system", "remove test users", "server", null, {
+      method: "server-management.js",
+      user: linuxusername,
+      removed_count: result.changes,
+      prefixes: TEST_USER_PREFIXES
+    });
+  } catch (err) {
+    log("Server", logLevels.ERROR, `Error removing test-generated users: ${err.message}`);
   }
 }
 

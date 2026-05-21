@@ -59,6 +59,7 @@ const {
   deleteUser,
   getAuditActor
 } = require('./users');
+const messaging = require('./messaging');
 
 // (
 //  { ttlSeconds: 2 }   // optional – default is 5
@@ -2010,6 +2011,29 @@ router.delete("/users/:username", requireManageUsers, (req, res) => {
     logFromRequest(req, logLevels.ERROR, `Failed to delete user ${target}: ${err.message}`);
     return res.status(500).json({ error: "Failed to delete user." });
   }
+});
+
+//--------------------------------------------------------------------------
+// Operator messaging cache
+//--------------------------------------------------------------------------
+
+router.get("/messages", (req, res) => {
+  return messaging.handleMaintenanceStats(req, res);
+});
+
+router.post("/messages/clear", (req, res) => {
+  const before = messaging.getStats();
+  const result = messaging.clearMessages();
+  audit(getAuditActor(req), "clear message cache", "server", null, {
+    deleted_messages: result.deleted,
+    previous_estimated_bytes: before.estimated_bytes
+  });
+  logFromRequest(req, logLevels.INFO, `Cleared operator message cache (${result.deleted} message(s))`);
+  return res.json(result);
+});
+
+router.get("/messages/export.csv", (req, res) => {
+  return messaging.handleMaintenanceExport(req, res);
 });
 
 

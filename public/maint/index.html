@@ -96,6 +96,7 @@
               <button type="button" class="maintenance-tab-button" data-tab="csv-import-export" data-tab-label="CSV Import / Export">CSV Import / Export</button>
               <button type="button" class="maintenance-tab-button" data-tab="diagnostics" data-tab-label="Diagnostics">Diagnostics</button>
               <button type="button" class="maintenance-tab-button" data-tab="user-management" data-tab-label="Manage Users">Manage Users</button>
+              <button type="button" class="maintenance-tab-button" data-tab="messaging" data-tab-label="Messaging">Messaging</button>
               <button type="button" class="maintenance-tab-button" data-tab="test-data-generator" data-tab-label="Test Data Generator">Test Data Generator</button>
               <button type="button" class="maintenance-tab-button" data-tab="template-editor" data-tab-label="Template Editor">Template Editor</button>
               <button type="button" class="maintenance-tab-button" data-tab="image-management" data-tab-label="Image Management">Image Management</button>
@@ -374,6 +375,67 @@
                     <button id="open-add-user-modal" type="button">Add User...</button>
                   </div>
                 </div>
+              </section>
+            </div>
+          </section>
+
+          <section class="maintenance-tab-panel" data-tab-panel="messaging" hidden>
+            <div class="panel-head">
+              <div>
+                <h2>Messaging</h2>
+                <div class="panel-subtle">Monitor and manage the persistent operator message cache.</div>
+              </div>
+            </div>
+            <div class="panel-body maintenance-tab-body">
+              <section class="maintenance-subpanel">
+                <div class="maintenance-subpanel-head">
+                  <div>
+                    <h3>Message Cache</h3>
+                    <p>Messages are stored in backend memory and saved to disk for backend restarts.</p>
+                  </div>
+                  <div class="maintenance-actions-row">
+                    <button id="refresh-messaging-stats" type="button">Refresh</button>
+                  </div>
+                </div>
+                <div class="maintenance-stat-grid messaging-stat-grid">
+                  <div class="maintenance-stat-card">
+                    <span>Enabled</span>
+                    <strong id="messaging-enabled-status">Unknown</strong>
+                  </div>
+                  <div class="maintenance-stat-card">
+                    <span>Stored Messages</span>
+                    <strong id="messaging-message-count">0</strong>
+                  </div>
+                  <div class="maintenance-stat-card">
+                    <span>Estimated Size</span>
+                    <strong id="messaging-cache-size">0 B</strong>
+                  </div>
+                  <div class="maintenance-stat-card">
+                    <span>Message Limit</span>
+                    <strong id="messaging-message-limit">0</strong>
+                  </div>
+                  <div class="maintenance-stat-card">
+                    <span>Cache Limit</span>
+                    <strong id="messaging-cache-limit">0 B</strong>
+                  </div>
+                  <div class="maintenance-stat-card">
+                    <span>Character Limit</span>
+                    <strong id="messaging-char-limit">0</strong>
+                  </div>
+                  <div class="maintenance-stat-card">
+                    <span>Persistence</span>
+                    <strong id="messaging-persistence-status">Unknown</strong>
+                  </div>
+                  <div class="maintenance-stat-card">
+                    <span>Last Saved</span>
+                    <strong id="messaging-persistence-saved">Never</strong>
+                  </div>
+                </div>
+                <div class="maintenance-actions-row messaging-cache-actions">
+                  <button id="export-messaging-cache" type="button">Export Messages CSV</button>
+                  <button id="clear-messaging-cache" type="button" class="danger-button">Clear Message Cache</button>
+                </div>
+                <p id="messaging-cache-note" class="panel-subtle">Use CSV export before clearing if message records are needed after the event.</p>
               </section>
             </div>
           </section>
@@ -962,6 +1024,13 @@
     };
   </script>
   <script src="/scripts/auth-bootstrap.js"></script>
+  <script>
+    window.AppMessagingConfig = {
+      closedPollMs: 30000,
+      enableItemReferences: false
+    };
+  </script>
+  <script src="/scripts/messaging.js"></script>
   <script src="/scripts/maintenance.js"></script>
   <script src="/scripts/daypilot-modal-3.15.1.min.js"></script>
   <script>

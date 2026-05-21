@@ -22,6 +22,13 @@
   "LOGIN_LOCKOUT_AFTER":  8,
   "LOGIN_LOCKOUT":        600,
   "SERVICE_NAME":         "auction-backend",
+  "MESSAGING_ENABLED":    true,
+  "MESSAGING_MAX_MESSAGES": 1000,
+  "MESSAGING_MAX_CACHE_BYTES": 5000000,
+  "MESSAGING_MAX_MESSAGE_CHARS": 500,
+  "MESSAGING_OPEN_POLL_MS": 3000,
+  "MESSAGING_PRESENCE_TTL_MS": 90000,
+  "MESSAGING_PERSISTENCE_FILE": "/var/lib/auction/operator-messages.json",
   "ENABLE_CORS":          false,
   "ALLOWED_ORIGINS":      ["localhost:3000", "example.com:3000"]
   }

@@ -72,7 +72,8 @@ const {
   run,
   authHeaders,
   fetchJson,
-  expectStatus
+  expectStatus,
+  loginAs
 } = framework;
 
 context.testAuctionShortName = null;
@@ -1075,6 +1076,61 @@ addTest("M-021e","maintenance/users create success", async () => {
   });
   await expectStatus(res, 201);
   assert.ok(json && json.message, `Unexpected create response: ${text}`);
+});
+
+addTest("M-021e1","maintenance/messages stats export and clear", async () => {
+  const lifecycleToken = await loginAs("cashier", context.managedUser.password, context.managedUser.username);
+  assert.ok(lifecycleToken, "Expected lifecycle cashier token");
+
+  const clearStart = await fetchJson(`${baseUrl}/maintenance/messages/clear`, {
+    method: "POST",
+    headers: authHeaders(context.token, { "Content-Type": "application/json" }),
+    body: JSON.stringify({})
+  });
+  await expectStatus(clearStart.res, 200);
+
+  const messageBody = `Maintenance message export test ${userSeed}`;
+  const send = await fetchJson(`${baseUrl}/messages`, {
+    method: "POST",
+    headers: authHeaders(context.token, { "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      to: context.managedUser.username,
+      body: messageBody,
+      attention: true
+    })
+  });
+  await expectStatus(send.res, 201);
+
+  const stats = await fetchJson(`${baseUrl}/maintenance/messages`, {
+    headers: authHeaders(context.token)
+  });
+  await expectStatus(stats.res, 200);
+  assert.equal(stats.json?.config?.enabled, true);
+  assert.equal(stats.json?.stats?.message_count, 1);
+  assert.ok(Number(stats.json?.stats?.estimated_bytes || 0) > 0, "Expected non-zero cache size");
+  assert.ok(stats.json?.config?.persistence_file, "Expected persistence file in messaging config");
+  assert.ok(stats.json?.stats?.persistence?.loaded, "Expected messaging persistence to be loaded");
+  assert.ok(stats.json?.stats?.persistence?.database_id, "Expected messaging persistence database id");
+
+  const csvRes = await fetch(`${baseUrl}/maintenance/messages/export.csv`, {
+    headers: authHeaders(context.token)
+  });
+  await expectStatus(csvRes, 200);
+  const csvText = await csvRes.text();
+  assert.ok(csvText.includes(messageBody), "Expected exported message body");
+  assert.ok(csvText.includes(context.managedUser.username), "Expected exported recipient");
+  assert.ok(csvText.includes("attention"), "Expected exported attention column");
+  assert.ok(csvText.includes("yes"), "Expected exported attention marker");
+
+  const clear = await fetchJson(`${baseUrl}/maintenance/messages/clear`, {
+    method: "POST",
+    headers: authHeaders(context.token, { "Content-Type": "application/json" }),
+    body: JSON.stringify({})
+  });
+  await expectStatus(clear.res, 200);
+  assert.equal(clear.json?.deleted, 1);
+  assert.equal(clear.json?.stats?.message_count, 0);
+  assert.ok(clear.json?.stats?.persistence?.last_saved_at, "Expected clear to flush messaging persistence");
 });
 
 addTest("M-021ea","manage_users user cannot grant permissions they do not have when creating users", async () => {
