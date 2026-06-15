@@ -406,6 +406,7 @@ app.get('/messages/status', messagingAccess, messaging.handleStatus);
 app.get('/messages/users', messagingAccess, messaging.handleUsers);
 app.get('/messages/thread/:username', messagingAccess, messaging.handleThread);
 app.post('/messages', messagingAccess, messaging.handleSend);
+app.post('/messages/:id/acknowledge', messagingAccess, messaging.handleAcknowledge);
 app.get('/messages/items', messagingAccess, messaging.handleItems);
 
 

@@ -107,6 +107,15 @@ function sanitizeLoadedMessage(raw) {
       }
     });
   }
+  const acknowledgedBy = {};
+  if (raw.acknowledged_by && typeof raw.acknowledged_by === "object" && !Array.isArray(raw.acknowledged_by)) {
+    Object.entries(raw.acknowledged_by).forEach(([username, acknowledgedAt]) => {
+      const normalized = normaliseUsername(username);
+      if (normalized && typeof acknowledgedAt === "string" && acknowledgedAt) {
+        acknowledgedBy[normalized] = acknowledgedAt;
+      }
+    });
+  }
 
   return {
     id,
@@ -118,7 +127,8 @@ function sanitizeLoadedMessage(raw) {
     broadcast: raw.broadcast === true,
     broadcast_id: typeof raw.broadcast_id === "string" && raw.broadcast_id ? raw.broadcast_id : null,
     attention: raw.attention === true,
-    read_by: readBy
+    read_by: readBy,
+    acknowledged_by: acknowledgedBy
   };
 }
 
@@ -422,6 +432,33 @@ function getUnreadAttentionFor(username) {
   };
 }
 
+function getLatestUnreadFor(username) {
+  const normalized = normaliseUsername(username);
+  let latest = null;
+  if (!normalized) {
+    return {
+      latest_unread_from: null,
+      latest_unread_id: null,
+      latest_unread_attention: false,
+      latest_unread_body: ""
+    };
+  }
+
+  messages.forEach((message) => {
+    if (message.to !== normalized || message.read_by?.[normalized]) return;
+    if (!latest || message.created_at_ms > latest.created_at_ms) {
+      latest = message;
+    }
+  });
+
+  return {
+    latest_unread_from: latest?.from || null,
+    latest_unread_id: latest?.id || null,
+    latest_unread_attention: latest?.attention === true,
+    latest_unread_body: latest?.body || ""
+  };
+}
+
 function getLastReceivedAt(username, fromUsername) {
   const normalized = normaliseUsername(username);
   const from = normaliseUsername(fromUsername);
@@ -454,7 +491,9 @@ function buildMessageView(message, currentUser) {
     broadcast: message.broadcast === true,
     broadcast_id: message.broadcast_id || null,
     attention: message.attention === true,
-    read_at: message.read_by?.[other] || null
+    read_at: message.read_by?.[other] || null,
+    acknowledged_at: message.acknowledged_by?.[message.to] || null,
+    acknowledgement_required: message.attention === true && message.to === current && !message.acknowledged_by?.[current]
   };
 }
 
@@ -478,11 +517,13 @@ function ensureActor(req, res) {
 function getStatusFor(username) {
   const unreadByUser = getUnreadByUser(username);
   const attention = getUnreadAttentionFor(username);
+  const latestUnread = getLatestUnreadFor(username);
   return {
     enabled: isMessagingEnabled(),
     unread_total: Object.values(unreadByUser).reduce((sum, value) => sum + Number(value || 0), 0),
     unread_by_user: unreadByUser,
     ...attention,
+    ...latestUnread,
     config: getConfigSummary(),
     stats: getStats()
   };
@@ -533,7 +574,8 @@ function createMessage({ from, to, body, now, createdAt, broadcast = false, broa
     attention,
     read_by: {
       [from]: createdAt
-    }
+    },
+    acknowledged_by: {}
   };
 
   messages.push(message);
@@ -638,6 +680,31 @@ function getThread(currentUsername, otherUsername, { markRead = true } = {}) {
     .map((message) => buildMessageView(message, current));
 }
 
+function acknowledgeMessage(currentUsername, messageId) {
+  const current = normaliseUsername(currentUsername);
+  const id = Number(messageId);
+  const message = Number.isInteger(id) && id > 0
+    ? messages.find((candidate) => candidate.id === id)
+    : null;
+  if (!message || message.to !== current) {
+    const error = new Error("message_not_found");
+    error.status = 404;
+    throw error;
+  }
+  if (message.attention !== true) {
+    const error = new Error("acknowledgement_not_allowed");
+    error.status = 400;
+    throw error;
+  }
+
+  message.acknowledged_by = message.acknowledged_by || {};
+  if (!message.acknowledged_by[current]) {
+    message.acknowledged_by[current] = new Date().toISOString();
+    markPersistenceDirty();
+  }
+  return message;
+}
+
 function clearMessages() {
   const deleted = messages.length;
   messages = [];
@@ -664,13 +731,15 @@ function exportRows() {
       broadcast_id: message.broadcast_id || "",
       attention: message.attention === true ? "yes" : "no",
       read_by: Object.keys(message.read_by || {}).sort().join("|"),
-      read_at_recipient: message.read_by?.[message.to] || ""
+      read_at_recipient: message.read_by?.[message.to] || "",
+      acknowledged_by: Object.keys(message.acknowledged_by || {}).sort().join("|"),
+      acknowledged_at_recipient: message.acknowledged_by?.[message.to] || ""
     }));
 }
 
 function exportCsv() {
   const parser = new Parser({
-    fields: ["id", "created_at", "from", "to", "body", "broadcast", "broadcast_id", "attention", "read_by", "read_at_recipient"]
+    fields: ["id", "created_at", "from", "to", "body", "broadcast", "broadcast_id", "attention", "read_by", "read_at_recipient", "acknowledged_by", "acknowledged_at_recipient"]
   });
   return parser.parse(exportRows());
 }
@@ -817,6 +886,26 @@ function handleSend(req, res) {
   }
 }
 
+function handleAcknowledge(req, res) {
+  if (!ensureEnabled(res)) return;
+  const current = ensureActor(req, res);
+  if (!current) return;
+
+  try {
+    const message = acknowledgeMessage(current, req.params.id);
+    return res.json({
+      message: buildMessageView(message, current),
+      unread_total: getStatusFor(current).unread_total
+    });
+  } catch (error) {
+    const messagesByCode = {
+      message_not_found: "Attention message not found",
+      acknowledgement_not_allowed: "Only attention messages can be acknowledged"
+    };
+    return res.status(error.status || 500).json({ error: messagesByCode[error.message] || "Failed to acknowledge message" });
+  }
+}
+
 function handleItems(req, res) {
   if (!ensureEnabled(res)) return;
   const current = ensureActor(req, res);
@@ -872,6 +961,7 @@ module.exports = {
   handleUsers,
   handleThread,
   handleSend,
+  handleAcknowledge,
   handleItems,
   handleMaintenanceStats,
   handleMaintenanceClear,

@@ -24,7 +24,11 @@
     openTimer: null,
     statusInFlight: false,
     refreshInFlight: false,
-    lastAutoOpenedAttentionKey: null
+    lastAutoOpenedAttentionKey: null,
+    lastNotifiedUnreadKey: null,
+    originalTitle: document.title,
+    messageNotifications: false,
+    preferenceController: null
   };
 
   const els = {};
@@ -79,6 +83,18 @@
     });
   }
 
+  function formatRelativeLastSeen(value) {
+    const parsed = Date.parse(value || "");
+    if (Number.isNaN(parsed)) return "not seen recently";
+    const minutes = Math.max(0, Math.floor((Date.now() - parsed) / 60000));
+    if (minutes < 1) return "seen just now";
+    if (minutes < 60) return `seen ${minutes} min ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `seen ${hours} hr ago`;
+    const days = Math.floor(hours / 24);
+    return `seen ${days} day${days === 1 ? "" : "s"} ago`;
+  }
+
   function setHidden(element, hidden) {
     if (element) element.hidden = Boolean(hidden);
   }
@@ -115,6 +131,7 @@
 
   function setUnreadState(total) {
     const unread = Number(total || 0);
+    document.title = unread > 0 ? `(${unread > 99 ? "99+" : unread}) ${state.originalTitle}` : state.originalTitle;
     if (!els.button || !els.badge) return;
     els.button.classList.toggle("has-unread", unread > 0);
     els.badge.hidden = unread <= 0;
@@ -123,9 +140,65 @@
     els.button.setAttribute("aria-label", els.button.title);
   }
 
+  function notificationsSupported() {
+    return "Notification" in global && typeof global.Notification?.requestPermission === "function";
+  }
+
+  function saveMessageNotificationPreference(enabled) {
+    state.messageNotifications = enabled === true;
+    state.preferenceController?.patchPagePreferences?.({
+      message_notifications: state.messageNotifications,
+      attention_notifications: state.messageNotifications
+    });
+    void state.preferenceController?.flush?.();
+  }
+
+  function syncNotificationToggle() {
+    if (!els.notifications) return;
+    els.notifications.checked = state.messageNotifications;
+    els.notifications.disabled = !notificationsSupported();
+    if (els.notificationsLabel) {
+      els.notificationsLabel.title = notificationsSupported()
+        ? "Notify for unread messages when this page is not focused"
+        : "Browser notifications are not supported here";
+    }
+  }
+
+  async function toggleMessageNotifications() {
+    if (!els.notifications) return;
+    if (!els.notifications.checked) {
+      saveMessageNotificationPreference(false);
+      setStatus("Message notifications disabled.");
+      return;
+    }
+    if (!notificationsSupported()) {
+      els.notifications.checked = false;
+      setStatus("Browser notifications are not supported here.", "error");
+      return;
+    }
+    const permission = await global.Notification.requestPermission();
+    if (permission !== "granted") {
+      els.notifications.checked = false;
+      saveMessageNotificationPreference(false);
+      setStatus("Browser notification permission was not granted.", "error");
+      return;
+    }
+    saveMessageNotificationPreference(true);
+    setStatus("Message notifications enabled.");
+  }
+
   function attentionStatusKey(data = {}) {
     const sender = String(data.latest_attention_from || "");
     const id = Number(data.latest_attention_id);
+    if (!sender) return null;
+    return Number.isInteger(id) && id > 0
+      ? `${sender}:${id}`
+      : `${sender}:legacy`;
+  }
+
+  function unreadStatusKey(data = {}) {
+    const sender = String(data.latest_unread_from || "");
+    const id = Number(data.latest_unread_id);
     if (!sender) return null;
     return Number.isInteger(id) && id > 0
       ? `${sender}:${id}`
@@ -193,6 +266,10 @@
                 <input id="operator-messaging-attention" type="checkbox">
                 <span>Pop up on recipient screen</span>
               </label>
+              <label id="operator-messaging-notifications-label" class="messaging-attention-toggle">
+                <input id="operator-messaging-notifications" type="checkbox">
+                <span>Browser notifications for unread messages</span>
+              </label>
               <div class="messaging-compose-actions">
                 <span id="operator-messaging-count" class="messaging-count">0 / 500</span>
                 <button id="operator-messaging-insert-item" type="button">Insert item</button>
@@ -214,6 +291,8 @@
     els.body = modal.querySelector("#operator-messaging-body");
     els.attention = modal.querySelector("#operator-messaging-attention");
     els.attentionWrap = modal.querySelector(".messaging-attention-toggle");
+    els.notifications = modal.querySelector("#operator-messaging-notifications");
+    els.notificationsLabel = modal.querySelector("#operator-messaging-notifications-label");
     els.send = modal.querySelector("#operator-messaging-send");
     els.count = modal.querySelector("#operator-messaging-count");
     els.status = modal.querySelector("#operator-messaging-status");
@@ -228,6 +307,7 @@
       if (event.target === els.modal) closeModal();
     });
     els.send.addEventListener("click", sendCurrentMessage);
+    els.notifications.addEventListener("change", () => { void toggleMessageNotifications(); });
     els.body.addEventListener("input", updateCharCount);
     els.body.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
@@ -342,8 +422,15 @@
       const name = document.createElement("span");
       name.className = "messaging-user-name";
       name.textContent = user.username;
+      const presenceText = document.createElement("span");
+      presenceText.className = "messaging-user-presence";
+      presenceText.textContent = user.online ? "online" : formatRelativeLastSeen(user.last_seen_at);
+      presenceText.title = user.last_seen_at ? new Date(user.last_seen_at).toLocaleString() : presenceText.textContent;
 
-      main.append(dot, name);
+      const details = document.createElement("span");
+      details.className = "messaging-user-details";
+      details.append(name, presenceText);
+      main.append(dot, details);
       button.appendChild(main);
 
       if (Number(user.unread_count) > 0) {
@@ -411,9 +498,20 @@
       const readText = message.direction === "outgoing"
         ? (message.read_at ? ` · Read ${formatTime(message.read_at)}` : " · Sent")
         : "";
-      meta.textContent = `${formatDateTime(message.created_at)}${broadcastText}${attentionText}${readText}`;
+      const acknowledgedText = message.attention && message.acknowledged_at
+        ? ` · Acknowledged ${formatTime(message.acknowledged_at)}`
+        : "";
+      meta.textContent = `${formatDateTime(message.created_at)}${broadcastText}${attentionText}${readText}${acknowledgedText}`;
 
       bubble.append(body, meta);
+      if (message.direction === "incoming" && message.acknowledgement_required === true) {
+        const acknowledge = document.createElement("button");
+        acknowledge.type = "button";
+        acknowledge.className = "messaging-acknowledge";
+        acknowledge.textContent = "Acknowledge";
+        acknowledge.addEventListener("click", () => { void acknowledgeAttentionMessage(message.id, acknowledge); });
+        bubble.appendChild(acknowledge);
+      }
       els.thread.appendChild(bubble);
     });
 
@@ -434,6 +532,7 @@
       if (!state.enabled && els.button) els.button.hidden = true;
       updateCharCount();
       const attentionKey = attentionStatusKey(data);
+      maybeNotifyUnread(data, unreadStatusKey(data));
       if (
         !state.open
         && document.visibilityState === "visible"
@@ -446,6 +545,34 @@
     } finally {
       state.statusInFlight = false;
     }
+  }
+
+  function maybeNotifyUnread(data, unreadKey) {
+    if (
+      !unreadKey
+      || !state.messageNotifications
+      || !notificationsSupported()
+      || global.Notification.permission !== "granted"
+      || unreadKey === state.lastNotifiedUnreadKey
+      || (document.visibilityState === "visible" && document.hasFocus())
+    ) {
+      return;
+    }
+
+    const attention = data.latest_unread_attention === true;
+    const preview = String(data.latest_unread_body || "").trim();
+    const notification = new global.Notification(attention ? "Attention message" : "New message", {
+      body: preview
+        ? `${data.latest_unread_from}: ${preview}`
+        : `${data.latest_unread_from} sent a ${attention ? "high priority " : ""}message.`,
+      tag: `operator-message-${unreadKey}`
+    });
+    state.lastNotifiedUnreadKey = unreadKey;
+    notification.onclick = () => {
+      global.focus();
+      void openModal({ selectedUser: data.latest_unread_from });
+      notification.close();
+    };
   }
 
   async function fetchUsers() {
@@ -490,11 +617,28 @@
     }
   }
 
+  async function acknowledgeAttentionMessage(id, button) {
+    if (button) button.disabled = true;
+    try {
+      const res = await request(`/messages/${encodeURIComponent(id)}/acknowledge`, {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Unable to acknowledge message");
+      setUnreadState(data.unread_total || 0);
+      await fetchThread();
+    } catch (error) {
+      setStatus(error.message || "Unable to acknowledge message", "error");
+      if (button) button.disabled = false;
+    }
+  }
+
   function startClosedPolling() {
     if (state.closedTimer) global.clearInterval(state.closedTimer);
     const interval = Math.max(5000, Number(config.closedPollMs || DEFAULT_CLOSED_POLL_MS));
     state.closedTimer = global.setInterval(() => {
-      if (!state.open && document.visibilityState === "visible") {
+      if (!state.open) {
         void fetchStatus();
       }
     }, interval);
@@ -503,8 +647,11 @@
   function startOpenPolling() {
     if (state.openTimer) global.clearInterval(state.openTimer);
     state.openTimer = global.setInterval(() => {
-      if (state.open && document.visibilityState === "visible") {
+      if (!state.open) return;
+      if (document.visibilityState === "visible") {
         void refreshOpenModal();
+      } else {
+        void fetchStatus();
       }
     }, Math.max(1000, Number(state.openPollMs || 3000)));
   }
@@ -662,6 +809,11 @@
     if (!state.token) return;
     if (!createButton()) return;
     createModal();
+    state.preferenceController = global.AppAuth?.createPreferenceController?.({ pageKey: "messaging" }) || null;
+    const messagingPreferences = state.preferenceController?.getPagePreferences?.() || {};
+    state.messageNotifications = messagingPreferences.message_notifications === true
+      || messagingPreferences.attention_notifications === true;
+    syncNotificationToggle();
     await fetchStatus();
     if (!state.enabled) return;
     startClosedPolling();

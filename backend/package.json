@@ -1,6 +1,6 @@
 {
     "name": "convention-auction-backend",
-    "version": "3.0.2-dev03",
+    "version": "3.0.2-dev04",
     "description": "Backend for Convention Auction Submission Management",
     "main": "backend.js",
     "scripts": {

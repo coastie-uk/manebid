@@ -277,11 +277,13 @@ document.addEventListener("DOMContentLoaded", () => {
           <p>Manage Items, Manage Payments, Manage Collections, and Manage Auctions include a message icon in the top status bar. The icon changes when unread messages are waiting.</p>
           <ul class="compact-list">
             <li><strong>Open messages:</strong> click the message icon to open the conversation screen.</li>
-            <li><strong>User list:</strong> users with access to at least one management page are listed. A green indicator means the user has checked messaging recently, and an unread count appears beside users with waiting messages.</li>
+            <li><strong>User list:</strong> users with access to at least one management page are listed. A green indicator means the user has checked messaging recently; offline users show an approximate last-seen time. An unread count appears beside users with waiting messages.</li>
             <li><strong>All users:</strong> select <strong>[All users]</strong> to send the same message to every available operator. The message is copied into each individual conversation and tagged as sent to everyone; replies appear only in the replying user's conversation.</li>
             <li><strong>Conversation thread:</strong> selecting a user shows the message history with timestamps. Showing the thread marks incoming messages from that user as read.</li>
             <li><strong>Attention messages:</strong> tick <strong>Pop up on recipient screen</strong> before sending if the message needs immediate attention. The message is highlighted, and the recipient's message screen opens automatically.</li>
-            <li><strong>Read indicator:</strong> messages you sent show when the recipient has opened that conversation.</li>
+            <li><strong>Acknowledgement:</strong> an incoming attention message has an <strong>Acknowledge</strong> button. Opening a thread marks a message read; acknowledging it separately tells the sender that the attention request was handled.</li>
+            <li><strong>Unread alerts:</strong> the page title shows the unread count. Operators can opt in to browser notifications for unread messages from the messaging screen; the browser may ask for permission first.</li>
+            <li><strong>Read indicator:</strong> messages you sent show when the recipient has opened that conversation, and attention messages show when they were acknowledged.</li>
             <li><strong>Item reference:</strong> on pages with a selected auction, use <strong>Insert item</strong> to search the current auction and insert an item reference. On Manage Items, clicking that reference jumps to the item.</li>
           </ul>
           <div class="doc-note">
@@ -968,7 +970,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <li><strong>Limits:</strong> shows the configured message count, cache size, and character limits.</li>
             <li><strong>Persistence:</strong> shows whether the message cache has been loaded from disk and whether a save is pending. The persistence file location is set in backend <code>config.json</code>.</li>
             <li><strong>Item references:</strong> Manage Auctions has no selected auction context, so the messaging item-search control is not shown on this page.</li>
-            <li><strong>Export Messages CSV:</strong> downloads the current message cache for record keeping.</li>
+            <li><strong>Export Messages CSV:</strong> downloads the current message cache for record keeping, including attention read and acknowledgement fields.</li>
             <li><strong>Clear Message Cache:</strong> removes all stored messages.</li>
           </ul>
         </div>

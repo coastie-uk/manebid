@@ -462,6 +462,12 @@ addTest("B-002a","operator messaging lifecycle", async () => {
   assert.equal(send.json?.message?.body, body);
   assert.equal(send.json?.message?.direction, "outgoing");
   assert.equal(send.json?.message?.attention, false, "Default messages should not request attention");
+  const acknowledgeNormal = await fetchJson(`${baseUrl}/messages/${encodeURIComponent(send.json?.message?.id)}/acknowledge`, {
+    method: "POST",
+    headers: authHeaders(tokens.cashier, { "Content-Type": "application/json" }),
+    body: JSON.stringify({})
+  });
+  await expectStatus(acknowledgeNormal.res, 400);
 
   const postSendStatus = await fetchJson(`${baseUrl}/messages/status`, {
     headers: authHeaders(tokens.admin)
@@ -477,6 +483,10 @@ addTest("B-002a","operator messaging lifecycle", async () => {
   });
   await expectStatus(cashierStatus.res, 200);
   assert.equal(cashierStatus.json?.unread_by_user?.[managedUsers.admin.username], 1);
+  assert.equal(cashierStatus.json?.latest_unread_from, managedUsers.admin.username);
+  assert.equal(cashierStatus.json?.latest_unread_id, send.json?.message?.id);
+  assert.equal(cashierStatus.json?.latest_unread_attention, false);
+  assert.equal(cashierStatus.json?.latest_unread_body, body);
 
   const cashierUsers = await fetchJson(`${baseUrl}/messages/users`, {
     headers: authHeaders(tokens.cashier)
@@ -551,6 +561,16 @@ addTest("B-002a","operator messaging lifecycle", async () => {
   assert.equal(maintenanceAttentionStatus.json?.unread_attention_by_user?.[managedUsers.admin.username], 1);
   assert.equal(maintenanceAttentionStatus.json?.latest_attention_from, managedUsers.admin.username);
   assert.equal(maintenanceAttentionStatus.json?.latest_attention_id, attentionSend.json?.message?.id);
+  assert.equal(maintenanceAttentionStatus.json?.latest_unread_from, managedUsers.admin.username);
+  assert.equal(maintenanceAttentionStatus.json?.latest_unread_id, attentionSend.json?.message?.id);
+  assert.equal(maintenanceAttentionStatus.json?.latest_unread_attention, true);
+  assert.equal(maintenanceAttentionStatus.json?.latest_unread_body, attentionBody);
+  const unauthorizedAttentionAcknowledge = await fetchJson(`${baseUrl}/messages/${encodeURIComponent(attentionSend.json?.message?.id)}/acknowledge`, {
+    method: "POST",
+    headers: authHeaders(tokens.cashier, { "Content-Type": "application/json" }),
+    body: JSON.stringify({})
+  });
+  await expectStatus(unauthorizedAttentionAcknowledge.res, 404);
 
   const maintenanceAttentionThread = await fetchJson(`${baseUrl}/messages/thread/${encodeURIComponent(managedUsers.admin.username)}`, {
     headers: authHeaders(tokens.maintenance)
@@ -559,6 +579,23 @@ addTest("B-002a","operator messaging lifecycle", async () => {
   assert.ok(
     (maintenanceAttentionThread.json?.messages || []).some(message => message.body === attentionBody && message.attention === true),
     "Expected attention message in recipient thread"
+  );
+  const incomingAttention = (maintenanceAttentionThread.json?.messages || []).find(message => message.id === attentionSend.json?.message?.id);
+  assert.equal(incomingAttention?.acknowledgement_required, true, "Expected incoming attention message to require acknowledgement");
+  const attentionAcknowledge = await fetchJson(`${baseUrl}/messages/${encodeURIComponent(attentionSend.json?.message?.id)}/acknowledge`, {
+    method: "POST",
+    headers: authHeaders(tokens.maintenance, { "Content-Type": "application/json" }),
+    body: JSON.stringify({})
+  });
+  await expectStatus(attentionAcknowledge.res, 200);
+  assert.ok(attentionAcknowledge.json?.message?.acknowledged_at, "Expected acknowledgement timestamp");
+  const adminAttentionThread = await fetchJson(`${baseUrl}/messages/thread/${encodeURIComponent(managedUsers.maintenance.username)}`, {
+    headers: authHeaders(tokens.admin)
+  });
+  await expectStatus(adminAttentionThread.res, 200);
+  assert.ok(
+    (adminAttentionThread.json?.messages || []).some(message => message.id === attentionSend.json?.message?.id && message.acknowledged_at),
+    "Expected sender thread to expose acknowledgement"
   );
 
   const attentionBroadcastBody = `Attention broadcast ${Date.now()}`;
@@ -570,6 +607,41 @@ addTest("B-002a","operator messaging lifecycle", async () => {
   await expectStatus(attentionBroadcast.res, 201);
   assert.equal(attentionBroadcast.json?.broadcast, true);
   assert.ok((attentionBroadcast.json?.messages || []).every(message => message.attention === true), "Expected all broadcast copies to request attention");
+  const maintenanceBroadcastAttention = (attentionBroadcast.json?.messages || []).find(message => message.to === managedUsers.maintenance.username);
+  const cashierBroadcastAttention = (attentionBroadcast.json?.messages || []).find(message => message.to === managedUsers.cashier.username);
+  const broadcastAcknowledge = await fetchJson(`${baseUrl}/messages/${encodeURIComponent(maintenanceBroadcastAttention?.id)}/acknowledge`, {
+    method: "POST",
+    headers: authHeaders(tokens.maintenance, { "Content-Type": "application/json" }),
+    body: JSON.stringify({})
+  });
+  await expectStatus(broadcastAcknowledge.res, 200);
+  const adminMaintenanceBroadcastThread = await fetchJson(`${baseUrl}/messages/thread/${encodeURIComponent(managedUsers.maintenance.username)}`, {
+    headers: authHeaders(tokens.admin)
+  });
+  await expectStatus(adminMaintenanceBroadcastThread.res, 200);
+  assert.ok(
+    (adminMaintenanceBroadcastThread.json?.messages || []).some(message => message.id === maintenanceBroadcastAttention?.id && message.acknowledged_at),
+    "Expected acknowledged attention broadcast copy"
+  );
+  const adminCashierBroadcastThread = await fetchJson(`${baseUrl}/messages/thread/${encodeURIComponent(managedUsers.cashier.username)}`, {
+    headers: authHeaders(tokens.admin)
+  });
+  await expectStatus(adminCashierBroadcastThread.res, 200);
+  assert.ok(
+    (adminCashierBroadcastThread.json?.messages || []).some(message => message.id === cashierBroadcastAttention?.id && !message.acknowledged_at),
+    "Expected other attention broadcast copy to remain unacknowledged"
+  );
+
+  const notificationPreferences = await fetchJson(`${baseUrl}/preferences`, {
+    method: "POST",
+    headers: authHeaders(tokens.admin, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ preferences: { messaging: { message_notifications: true, ignored: true } } })
+  });
+  await expectStatus(notificationPreferences.res, 200);
+  assert.deepEqual(notificationPreferences.json?.preferences?.messaging, {
+    message_notifications: true,
+    attention_notifications: true
+  });
 
   const sanitizedSend = await fetchJson(`${baseUrl}/messages`, {
     method: "POST",

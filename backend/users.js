@@ -143,6 +143,19 @@ function normaliseThemePreferences(raw) {
   };
 }
 
+function normaliseMessagingPreferences(raw) {
+  const source = isPlainObject(raw) ? raw : {};
+  const attentionNotifications = normaliseBoolean(source.attention_notifications);
+  const messageNotifications = normaliseBoolean(source.message_notifications);
+  const enabled = messageNotifications !== undefined
+    ? messageNotifications === true
+    : attentionNotifications === true;
+  return {
+    message_notifications: enabled,
+    attention_notifications: enabled
+  };
+}
+
 function normaliseUserPreferences(raw) {
   const source = parsePreferences(raw);
   const result = {
@@ -152,6 +165,7 @@ function normaliseUserPreferences(raw) {
   if (source.admin !== undefined) result.admin = normaliseAdminPreferences(source.admin);
   if (source.cashier !== undefined) result.cashier = normaliseCashierPreferences(source.cashier);
   if (source.live_feed !== undefined) result.live_feed = normaliseLiveFeedPreferences(source.live_feed);
+  if (source.messaging !== undefined) result.messaging = normaliseMessagingPreferences(source.messaging);
   return result;
 }
 

@@ -1100,6 +1100,12 @@ addTest("M-021e1","maintenance/messages stats export and clear", async () => {
     })
   });
   await expectStatus(send.res, 201);
+  const acknowledge = await fetchJson(`${baseUrl}/messages/${encodeURIComponent(send.json?.message?.id)}/acknowledge`, {
+    method: "POST",
+    headers: authHeaders(lifecycleToken, { "Content-Type": "application/json" }),
+    body: JSON.stringify({})
+  });
+  await expectStatus(acknowledge.res, 200);
 
   const stats = await fetchJson(`${baseUrl}/maintenance/messages`, {
     headers: authHeaders(context.token)
@@ -1121,6 +1127,8 @@ addTest("M-021e1","maintenance/messages stats export and clear", async () => {
   assert.ok(csvText.includes(context.managedUser.username), "Expected exported recipient");
   assert.ok(csvText.includes("attention"), "Expected exported attention column");
   assert.ok(csvText.includes("yes"), "Expected exported attention marker");
+  assert.ok(csvText.includes("acknowledged_at_recipient"), "Expected acknowledgement export column");
+  assert.ok(csvText.includes(String(acknowledge.json?.message?.acknowledged_at || "")), "Expected exported acknowledgement timestamp");
 
   const clear = await fetchJson(`${baseUrl}/maintenance/messages/clear`, {
     method: "POST",

@@ -12,7 +12,7 @@ It focuses on:
 
 Current code snapshot:
 
-- backend package version: `3.0.0`
+- backend package version: `3.0.2-dev04`
 - database schema version: `3.0`
 - payment processor module version: `SumUp 1.2.0(2026-02-09)`
 
@@ -43,6 +43,7 @@ Version `2.2` introduced SumUp payment intents. Since then, the architecture has
 - settlement gained donation tracking and better payment reversal handling
 - maintenance gained managed backup archives with metadata, listing, download, delete, and selective restore
 - slideshow startup changed to an authenticated kiosk flow using `/api/slideshow/auctions`
+- operator messaging was added across management pages, with persistent message cache, unread/title/browser notifications, presence, attention acknowledgements, broadcast sends, and item references
 
 Routes intentionally no longer documented because they are retired from frontend use:
 
@@ -85,6 +86,7 @@ Current explicit permissions:
   - cashier live feed: `public/scripts/live-feed.js`
   - settlement: `public/scripts/settlement.js`
   - maintenance: `public/scripts/maintenance.js`
+  - shared operator messaging: `public/scripts/messaging.js`
 - Operator pages use the shared `AppAuth` layer from `public/scripts/session-auth.js`.
 
 ### Session model
@@ -102,6 +104,7 @@ Current explicit permissions:
 - Entrypoint: `backend/backend.js`
 - DB/schema/bootstrap: `backend/db.js`
 - User/access helpers: `backend/users.js`
+- Operator messaging service: `backend/messaging.js`
 - SumUp/payment integration: `backend/payments.js`
 - Maintenance router: `backend/maintenance.js`
 - Export/report routes: `backend/export-routes.js`
@@ -141,6 +144,7 @@ Important mounted modules:
 - configurable resource assets in `CONFIG_IMG_DIR`
 - generated exports in `OUTPUT_DIR`
 - managed backup archives and sidecar metadata in `BACKUP_DIR`
+- operator message persistence file from `MESSAGING_PERSISTENCE_FILE`
 
 ### Key database tables
 
@@ -322,6 +326,100 @@ Backend endpoints:
 - `GET /api/preferences`
 - `POST /api/preferences`
 - `POST /api/change-password`
+
+---
+
+#### 2.1 Shared operator messaging
+
+Files:
+
+- `public/scripts/messaging.js`
+- `backend/messaging.js`
+
+Messaging is available on the operator management surfaces:
+
+- Manage Auctions
+- Manage Items
+- Manage Payments
+- Manage Collections
+
+Recipient eligibility:
+
+- users with `admin`, `maintenance`, or `cashier` role
+- users with `live_feed` permission
+- excludes the current user
+- excludes slideshow-only users
+
+Frontend behavior:
+
+1. Each management page adds a message icon to the top status bar.
+2. The icon and page title show unread message counts.
+3. The modal contains:
+   - recipient list with unread counts
+   - online/last-seen presence text
+   - `[All users]` broadcast target
+   - conversation thread
+   - message composer
+   - optional attention flag
+   - optional browser notifications for unread messages
+   - optional current-auction item reference search where an auction context exists
+4. Showing a conversation thread marks matching incoming messages as read.
+5. Attention messages are visually highlighted and can auto-open the modal on the recipient page.
+6. Attention acknowledgement is separate from read state:
+   - recipient sees an `Acknowledge` control for unacknowledged incoming attention messages
+   - sender can see acknowledgement timestamp once handled
+7. Browser notifications are opt-in per user preference and use the latest unread message body as the notification text when the page is hidden or unfocused.
+
+Polling:
+
+- open modal polling uses backend `MESSAGING_OPEN_POLL_MS`
+- closed modal polling is page-configured to match operator workflow needs:
+  - Manage Items: 5s
+  - Manage Payments: 10s
+  - Manage Collections: 5s
+  - Manage Auctions: 30s
+- hidden tabs continue lightweight status polling; hidden open modals poll status rather than refreshing threads, so messages are not marked read in the background
+
+Backend endpoints:
+
+- `GET /api/messages/status`
+- `GET /api/messages/users`
+- `GET /api/messages/thread/:username`
+- `POST /api/messages`
+- `POST /api/messages/:id/acknowledge`
+- `GET /api/messages/items?auction_id=<id>&q=<text>`
+
+Data model and persistence:
+
+- messages are stored as in-memory objects while the backend is running
+- each message has sender, recipient, sanitized body, created timestamp, read state, broadcast metadata, optional attention flag, and acknowledgement map
+- broadcast creates one per-recipient message copy
+- message body is sanitized before storage
+- cache size is bounded by `MESSAGING_MAX_MESSAGES` and `MESSAGING_MAX_CACHE_BYTES`
+- message length is bounded by `MESSAGING_MAX_MESSAGE_CHARS`
+- the in-memory cache is periodically saved to `MESSAGING_PERSISTENCE_FILE`
+- persistence file includes:
+  - format version
+  - database ID
+  - payload checksum
+  - message count
+  - next message ID
+  - saved messages
+- on startup, mismatched or invalid persistence files are renamed/quarantined and replaced with a new file
+- runtime presence is based on recent messaging polls and is not persisted
+
+Item references:
+
+- item search is available only where a selected auction exists
+- inserted item references keep readable text plus an internal marker with auction and item IDs
+- on Manage Items, clicking a recognized item reference jumps to the matching visible row and briefly highlights it
+- Manage Auctions disables item references because there is no selected auction context
+
+Preferences:
+
+- messaging preferences live under `users.preferences.messaging`
+- `message_notifications` controls browser notifications
+- legacy `attention_notifications` is normalized for compatibility
 
 ---
 
@@ -785,6 +883,28 @@ Data flow:
   - slip config schema
 - audit viewer/export reads `audit_log`
 
+#### 6.6 Messaging cache management
+
+The maintenance UI includes a Messaging pane for the persistent operator message cache.
+
+Endpoints:
+
+- `GET /api/maintenance/messages`
+- `POST /api/maintenance/messages/clear`
+- `GET /api/maintenance/messages/export.csv`
+
+Data flow:
+
+- stats read the in-memory message cache, configured limits, estimated byte size, and persistence status
+- CSV export serializes the current message cache including:
+  - sender/recipient
+  - body
+  - broadcast marker and broadcast ID
+  - attention marker
+  - read state
+  - acknowledgement state
+- clear removes all cached messages and forces persistence to update the backing file
+
 ---
 
 ### 7) Slideshow
@@ -831,6 +951,15 @@ Authentication/session:
 - `GET /api/preferences`
 - `POST /api/preferences`
 - `POST /api/change-password`
+
+Shared operator messaging:
+
+- `GET /api/messages/status`
+- `GET /api/messages/users`
+- `GET /api/messages/thread/:username`
+- `POST /api/messages`
+- `POST /api/messages/:id/acknowledge`
+- `GET /api/messages/items`
 
 Public:
 
@@ -928,6 +1057,9 @@ Maintenance:
 - `POST /api/maintenance/resources/upload`
 - `GET /api/maintenance/resources`
 - `POST /api/maintenance/resources/delete`
+- `GET /api/maintenance/messages`
+- `POST /api/maintenance/messages/clear`
+- `GET /api/maintenance/messages/export.csv`
 - `GET /api/maintenance/audit-log/export`
 
 Slideshow:
@@ -953,6 +1085,7 @@ The application has advanced from the `2.2` baseline to include:
 - async export/report generation
 - donation-aware settlement and reversals
 - live-feed collection tracking
+- persistent operator messaging with unread alerts, notifications, presence, broadcasts, item references, and attention acknowledgements
 - managed backup archives with selective restore
 - authenticated slideshow kiosk mode
 

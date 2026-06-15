@@ -1276,6 +1276,11 @@ form button:hover {
     min-width: 0;
 }
 
+.messaging-user-details {
+    display: grid;
+    min-width: 0;
+}
+
 .messaging-broadcast-dot {
     align-items: center;
     background: #24436b;
@@ -1293,6 +1298,14 @@ form button:hover {
 }
 
 .messaging-user-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.messaging-user-presence {
+    color: var(--admin-muted);
+    font-size: 0.74rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1396,6 +1409,11 @@ form button:hover {
 
 .messaging-message.is-outgoing .messaging-message-meta {
     text-align: right;
+}
+
+.messaging-acknowledge {
+    justify-self: start;
+    padding: 5px 9px;
 }
 
 .messaging-compose,
