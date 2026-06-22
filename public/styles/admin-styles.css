@@ -1102,6 +1102,82 @@ form button:hover {
     border-color: #c6d7ef;
 }
 
+.password-modal-overlay {
+    align-items: center;
+    background: rgba(14, 23, 38, 0.52);
+    display: flex;
+    inset: 0;
+    justify-content: center;
+    padding: 20px;
+    position: fixed;
+    z-index: 9999;
+}
+
+.password-modal-card {
+    background: var(--admin-panel-bg);
+    border: 1px solid var(--admin-panel-border);
+    border-radius: 16px;
+    box-shadow: 0 24px 48px rgba(10, 30, 60, 0.22);
+    color: var(--admin-text);
+    font: inherit;
+    padding: 16px;
+    width: min(420px, 92vw);
+}
+
+.password-modal-title {
+    font-size: 1rem;
+    font-weight: 700;
+    margin: 0 0 10px;
+}
+
+.password-modal-input {
+    background: #fff;
+    border: 1px solid #cbd5df;
+    border-radius: 10px;
+    box-sizing: border-box;
+    color: var(--admin-text);
+    display: block;
+    font: inherit;
+    margin-bottom: 8px;
+    min-height: 40px;
+    padding: 8px 10px;
+    width: 100%;
+}
+
+.password-modal-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 12px;
+}
+
+.password-modal-button {
+    background: #eef4ff;
+    border: 1px solid #d7deea;
+    border-radius: 10px;
+    color: #24436b;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+    min-height: 38px;
+    padding: 0 14px;
+}
+
+.password-modal-button--primary {
+    background: var(--admin-accent);
+    border-color: var(--admin-accent);
+    color: #fff;
+}
+
+.password-modal-button:hover {
+    background: #e5eefc;
+    border-color: #c6d7ef;
+}
+
+.password-modal-button--primary:hover {
+    filter: brightness(0.96);
+}
+
 .about-grid {
     display: grid;
     gap: 10px;
@@ -1611,6 +1687,170 @@ form button:hover {
     color: var(--admin-text);
     font-family: "Consolas", "SFMono-Regular", monospace;
     word-break: break-word;
+}
+
+.import-items-card {
+    max-width: 1180px;
+    width: min(100%, 1180px);
+}
+
+.import-items-panel {
+    display: grid;
+    gap: 12px;
+}
+
+.import-file-field {
+    display: grid;
+    gap: 6px;
+}
+
+.import-file-field span {
+    color: var(--admin-muted);
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.import-file-field input {
+    background: #fff;
+    border: 1px solid #cbd5df;
+    border-radius: 10px;
+    box-sizing: border-box;
+    color: var(--admin-text);
+    font: inherit;
+    min-height: 42px;
+    padding: 8px 10px;
+    width: 100%;
+}
+
+.import-items-summary,
+.import-items-counts {
+    color: var(--admin-muted);
+    margin: 0;
+}
+
+.import-items-summary.is-error {
+    color: var(--admin-danger);
+    font-weight: 700;
+}
+
+.import-items-table-wrap {
+    border: 1px solid var(--admin-panel-border);
+    border-radius: 12px;
+    max-height: min(58vh, 560px);
+    overflow: auto;
+}
+
+.import-items-table {
+    border-collapse: collapse;
+    min-width: 1040px;
+    width: 100%;
+}
+
+.import-items-table th,
+.import-items-table td {
+    border-bottom: 1px solid #dbe6f5;
+    padding: 9px 10px;
+    text-align: left;
+    vertical-align: top;
+}
+
+.import-items-table th {
+    background: #f8fbff;
+    color: var(--admin-muted);
+    font-size: 0.78rem;
+    position: sticky;
+    text-transform: uppercase;
+    top: 0;
+    z-index: 1;
+}
+
+.import-items-table td {
+    color: var(--admin-text);
+    font-size: 0.9rem;
+    max-width: 220px;
+    overflow-wrap: anywhere;
+}
+
+.import-items-table input[type="file"] {
+    max-width: 180px;
+}
+
+.import-items-empty {
+    color: var(--admin-muted);
+    text-align: center !important;
+}
+
+.import-row-number,
+.import-row-status {
+    white-space: nowrap;
+}
+
+.import-row-status[data-state="failed"],
+.import-items-table tr.is-invalid .import-row-status {
+    color: var(--admin-danger);
+    font-weight: 700;
+}
+
+.import-row-status[data-state="imported"] {
+    color: #18794e;
+    font-weight: 700;
+}
+
+.import-items-table tr.is-importing td {
+    background: #eef4ff;
+}
+
+.import-items-table tr.is-imported td {
+    background: #edf8f2;
+}
+
+.import-items-table tr.is-failed td,
+.import-items-table tr.is-invalid td {
+    background: #fff4f2;
+}
+
+.import-image-preview {
+    background: #fff;
+    border: 1px solid #dbe6f5;
+    border-radius: 8px;
+    display: block;
+    height: 54px;
+    object-fit: cover;
+    width: 54px;
+}
+
+.import-image-placeholder {
+    color: var(--admin-muted);
+    display: inline-block;
+    min-width: 64px;
+}
+
+.import-items-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.import-items-actions button {
+    border: 1px solid #d7deea;
+    border-radius: 10px;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+    min-height: 40px;
+    padding: 0 14px;
+}
+
+.import-items-actions button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.import-items-primary {
+    background: #18794e;
+    border-color: #18794e !important;
+    color: #fff;
 }
 
 @media (min-width: 900px) {
@@ -2235,6 +2475,7 @@ footer {
 :root[data-theme="dark"] #export-section,
 :root[data-theme="dark"] .table-container,
 :root[data-theme="dark"] .app-modal-card,
+:root[data-theme="dark"] .password-modal-card,
 :root[data-theme="dark"] .edit-photo-preview,
 :root[data-theme="dark"] .item-context-menu {
     background: var(--admin-panel-bg);
@@ -2248,6 +2489,8 @@ footer {
 :root[data-theme="dark"] .menu-checkbox-row,
 :root[data-theme="dark"] .move-panel,
 :root[data-theme="dark"] .app-modal-close,
+:root[data-theme="dark"] .password-modal-button,
+:root[data-theme="dark"] .import-items-actions button,
 :root[data-theme="dark"] .image-tools button,
 :root[data-theme="dark"] .item-action-button,
 :root[data-theme="dark"] .item-context-menu-action,
@@ -2269,6 +2512,8 @@ footer {
 :root[data-theme="dark"] .item-context-menu-action:focus-visible,
 :root[data-theme="dark"] .btn-undo:hover,
 :root[data-theme="dark"] .app-modal-close:hover,
+:root[data-theme="dark"] .password-modal-button:hover,
+:root[data-theme="dark"] .import-items-actions button:hover,
 :root[data-theme="dark"] .messaging-user-button:hover,
 :root[data-theme="dark"] .messaging-user-button.is-active,
 :root[data-theme="dark"] .messaging-item-result:hover {
@@ -2285,12 +2530,21 @@ footer {
 :root[data-theme="dark"] form input[type="number"],
 :root[data-theme="dark"] .login-container input,
 :root[data-theme="dark"] .login-container select,
+:root[data-theme="dark"] .password-modal-input,
 :root[data-theme="dark"] .export-range-controls input[type="text"],
+:root[data-theme="dark"] .import-file-field input,
 :root[data-theme="dark"] .messaging-compose textarea,
 :root[data-theme="dark"] .messaging-item-search-row input {
     background: #0b1320;
     border-color: #31425c;
     color: var(--admin-text);
+}
+
+:root[data-theme="dark"] .password-modal-button--primary {
+    background: var(--admin-accent);
+    border-color: var(--admin-accent);
+    color: #fff;
+    box-shadow: none;
 }
 
 :root[data-theme="dark"] .menu-divider,
@@ -2338,6 +2592,44 @@ footer {
     box-shadow: 0 0 0 2px rgba(214, 106, 79, 0.18);
 }
 
+:root[data-theme="dark"] .import-items-table-wrap,
+:root[data-theme="dark"] .import-items-table th,
+:root[data-theme="dark"] .import-items-table td,
+:root[data-theme="dark"] .import-image-preview {
+    border-color: #253349;
+}
+
+:root[data-theme="dark"] .import-items-table th {
+    background: #162234;
+}
+
+:root[data-theme="dark"] .import-items-table tr.is-importing td {
+    background: #173258;
+}
+
+:root[data-theme="dark"] .import-items-table tr.is-imported td {
+    background: #173123;
+}
+
+:root[data-theme="dark"] .import-items-table tr.is-failed td,
+:root[data-theme="dark"] .import-items-table tr.is-invalid td {
+    background: #3a2319;
+}
+
+:root[data-theme="dark"] .import-image-preview {
+    background: #0b1320;
+}
+
+:root[data-theme="dark"] .import-row-status[data-state="imported"] {
+    color: #7bd99f;
+}
+
+:root[data-theme="dark"] .import-items-primary {
+    background: #18794e;
+    border-color: #18794e !important;
+    color: #fff;
+}
+
 :root[data-theme="dark"] .messaging-item-link {
     background: #1b2a41;
     border-color: #4a6388;
@@ -2357,6 +2649,21 @@ footer {
 
 :root[data-theme="dark"] #itemsTable tbody tr:hover {
     background: rgba(95, 159, 255, 0.08);
+}
+
+:root[data-theme="dark"] .item-row--deleted {
+    background: #1a2433;
+    color: #93a3ba;
+}
+
+:root[data-theme="dark"] .item-row--deleted td {
+    background: #1a2433;
+    border-color: #2a384d;
+}
+
+:root[data-theme="dark"] .item-row--deleted .item-photo-placeholder,
+:root[data-theme="dark"] .item-row--deleted .item-status-indicator {
+    opacity: 0.55;
 }
 
 :root[data-theme="dark"] .item-context-menu-action {

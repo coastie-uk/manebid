@@ -83,6 +83,7 @@
                         <summary class="menu-trigger">Operations</summary>
                         <div class="menu-panel">
                             <button id="add-item" type="button" class="menu-item-button">Create New Item...</button>
+                            <button id="import-items" type="button" class="menu-item-button">Import Items...</button>
                             <button id="manage-bidders" type="button" class="menu-item-button">Manage Bidders...</button>
                             <button id="refresh" type="button" class="menu-item-button">Refresh</button>
                             <button id="open-export-panel" class="menu-item-button">Export...</button>
@@ -469,6 +470,55 @@
                 </table>
                 <div style="text-align:right; margin-top:10px;">
                     <button onclick="closeHistoryModal()">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="import-items-modal" class="app-modal" hidden>
+            <div class="app-modal-card app-modal-card--wide import-items-card" role="dialog" aria-modal="true" aria-labelledby="import-items-title">
+                <div class="app-modal-header">
+                    <div>
+                        <h3 id="import-items-title">Import Items</h3>
+                        <p>CSV columns required: <code>description, artist, contributor, notes</code></p>
+                    </div>
+                    <button id="close-import-items-modal" type="button" class="app-modal-close" aria-label="Close import items dialog">Close</button>
+                </div>
+
+                <div class="import-items-panel">
+                    <label class="import-file-field" for="import-items-csv">
+                        <span>CSV file</span>
+                        <input id="import-items-csv" type="file" accept=".csv,text/csv">
+                    </label>
+                    <p id="import-items-summary" class="import-items-summary">Choose a CSV file to preview items before import.</p>
+                    <p id="import-items-counts" class="import-items-counts">No rows loaded.</p>
+
+                    <div class="import-items-table-wrap">
+                        <table class="import-items-table">
+                            <thead>
+                                <tr>
+                                    <th>Import</th>
+                                    <th>Row</th>
+                                    <th>Description</th>
+                                    <th>Artist</th>
+                                    <th>Contributor</th>
+                                    <th>Notes</th>
+                                    <th>Image</th>
+                                    <th>Preview</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="import-items-table-body">
+                                <tr>
+                                    <td colspan="9" class="import-items-empty">No CSV loaded.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="import-items-actions">
+                        <button id="run-import-items" type="button" class="import-items-primary" disabled>Import Selected</button>
+                        <button id="cancel-import-items" type="button">Cancel</button>
+                    </div>
                 </div>
             </div>
         </div>

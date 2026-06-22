@@ -1631,49 +1631,45 @@ function promptPassword(message, message2 = "") {
 function promptPasswordChange() {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
-    overlay.style.cssText = `
-      position:fixed; inset:0; background:rgba(0,0,0,.5);
-      display:flex; align-items:center; justify-content:center; z-index:9999;
-    `;
+    overlay.className = "password-modal-overlay";
 
     const box = document.createElement("div");
-    box.style.cssText = `
-      background:#fff; padding:16px; border-radius:8px; width:min(420px, 92vw);
-      box-shadow:0 8px 24px rgba(0,0,0,.2); font-family:system-ui, sans-serif;
-    `;
+    box.className = "password-modal-card";
 
     const heading = document.createElement("div");
     heading.textContent = "Change password";
-    heading.style.cssText = "font-weight:600; margin-bottom:10px;";
+    heading.className = "password-modal-title";
 
     const currentInput = document.createElement("input");
     currentInput.type = "password";
     currentInput.placeholder = "Current password";
     currentInput.autocomplete = "current-password";
-    currentInput.style.cssText = "width:100%; padding:8px; margin-bottom:8px; box-sizing:border-box;";
+    currentInput.className = "password-modal-input";
 
     const newInput = document.createElement("input");
     newInput.type = "password";
     newInput.placeholder = "New password";
     newInput.autocomplete = "new-password";
-    newInput.style.cssText = "width:100%; padding:8px; margin-bottom:8px; box-sizing:border-box;";
+    newInput.className = "password-modal-input";
 
     const confirmInput = document.createElement("input");
     confirmInput.type = "password";
     confirmInput.placeholder = "Confirm new password";
     confirmInput.autocomplete = "new-password";
-    confirmInput.style.cssText = "width:100%; padding:8px; box-sizing:border-box;";
+    confirmInput.className = "password-modal-input";
 
     const row = document.createElement("div");
-    row.style.cssText = "display:flex; justify-content:flex-end; gap:8px; margin-top:12px;";
+    row.className = "password-modal-actions";
 
     const cancel = document.createElement("button");
     cancel.type = "button";
     cancel.textContent = "Cancel";
+    cancel.className = "password-modal-button";
 
     const submit = document.createElement("button");
     submit.type = "button";
     submit.textContent = "Update";
+    submit.className = "password-modal-button password-modal-button--primary";
 
     function close(result) {
       overlay.remove();
@@ -2041,23 +2037,23 @@ document.getElementById("export-csv").onclick = async () => {
 
 
 
-document.getElementById("import-csv-btn").onclick = async () => {
-  const fileInput = document.getElementById("import-csv");
-  if (!fileInput.files.length) return showMessage("Select a file", "info");
-  const formData = new FormData();
-  formData.append("csv", fileInput.files[0]);
-  const res = await fetch(`${API}/maintenance/import`, {
-    method: "POST",
-    headers: { Authorization: token },
-    body: formData
-  });
-  const data = await res.json();
-  if (res.ok) {
-    showMessage(data.message || "Import complete", "success");
-  } else {
-    showMessage(data.error || "Import failed", "error");
-  }
-};
+// document.getElementById("import-csv-btn").onclick = async () => {
+//   const fileInput = document.getElementById("import-csv");
+//   if (!fileInput.files.length) return showMessage("Select a file", "info");
+//   const formData = new FormData();
+//   formData.append("csv", fileInput.files[0]);
+//   const res = await fetch(`${API}/maintenance/import`, {
+//     method: "POST",
+//     headers: { Authorization: token },
+//     body: formData
+//   });
+//   const data = await res.json();
+//   if (res.ok) {
+//     showMessage(data.message || "Import complete", "success");
+//   } else {
+//     showMessage(data.error || "Import failed", "error");
+//   }
+// };
 
 document.getElementById("photo-report").onclick = async () => {
   const res = await fetch(`${API}/maintenance/photo-report`, { headers: { Authorization: token } });

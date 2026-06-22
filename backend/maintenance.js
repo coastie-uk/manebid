@@ -1536,94 +1536,94 @@ router.get("/export", (req, res) => {
 // API to Import items from simplified CSV (retaining existing data)
 //--------------------------------------------------------------------------
 
-router.post("/import", async (req, res) => {
-  logFromRequest(req, logLevels.INFO, "Bulk CSV import requested");
+// router.post("/import", async (req, res) => {
+//   logFromRequest(req, logLevels.INFO, "Bulk CSV import requested");
 
-  try {
+//   try {
 
-      await awaitMiddleware(upload.single('csv'))(req, res);
+//       await awaitMiddleware(upload.single('csv'))(req, res);
 
-    // ── 1. Read CSV ──────────────────────────────────────────────────────────
-    const csv = fs.readFileSync(req.file.path, "utf-8");
-    const lines = csv.split("\n").filter(Boolean);
-    const headers = lines.shift().split(",").map(h => h.trim().toLowerCase());
+//     // ── 1. Read CSV ──────────────────────────────────────────────────────────
+//     const csv = fs.readFileSync(req.file.path, "utf-8");
+//     const lines = csv.split("\n").filter(Boolean);
+//     const headers = lines.shift().split(",").map(h => h.trim().toLowerCase());
 
-    const expected = ["description", "artist", "contributor", "notes", "auction_id"];
-    if (!expected.every(h => headers.includes(h))) {
-      return res
-        .status(400)
-        .json({ error: "CSV must contain description, artist, contributor, notes, and auction_id columns." });
-    }
+//     const expected = ["description", "artist", "contributor", "notes", "auction_id"];
+//     if (!expected.every(h => headers.includes(h))) {
+//       return res
+//         .status(400)
+//         .json({ error: "CSV must contain description, artist, contributor, notes, and auction_id columns." });
+//     }
 
-    // ── 2. Parse rows → objects  ─────────────────────────────────────────────
-    const items = lines.map(line => {
-      const cols = line.split(",").map(v => v.trim());
-      return Object.fromEntries(headers.map((h, i) => [h, cols[i] || ""]));
-    });
+//     // ── 2. Parse rows → objects  ─────────────────────────────────────────────
+//     const items = lines.map(line => {
+//       const cols = line.split(",").map(v => v.trim());
+//       return Object.fromEntries(headers.map((h, i) => [h, cols[i] || ""]));
+//     });
 
-    if (items.length === 0) {
-      return res.status(400).json({ error: "CSV contains no data rows." });
-    }
+//     if (items.length === 0) {
+//       return res.status(400).json({ error: "CSV contains no data rows." });
+//     }
 
-    // ── 3. Validate auction IDs in one go  ───────────────────────────────────
-    const auctionIds = [...new Set(items.map(r => Number(r.auction_id)))];
-    const validAuctionId = new Set(
-      db.prepare("SELECT id FROM auctions WHERE id IN (" + auctionIds.map(() => "?").join(",") + ")")
-        .all(...auctionIds)
-        .map(r => r.id)
-    );
+//     // ── 3. Validate auction IDs in one go  ───────────────────────────────────
+//     const auctionIds = [...new Set(items.map(r => Number(r.auction_id)))];
+//     const validAuctionId = new Set(
+//       db.prepare("SELECT id FROM auctions WHERE id IN (" + auctionIds.map(() => "?").join(",") + ")")
+//         .all(...auctionIds)
+//         .map(r => r.id)
+//     );
 
-    const invalid = auctionIds.filter(id => !validAuctionId.has(id));
-    if (invalid.length) {
-      return res
-        .status(400)
-        .json({ error: `Auction id(s) not found: ${invalid.join(", ")}` });
-    }
+//     const invalid = auctionIds.filter(id => !validAuctionId.has(id));
+//     if (invalid.length) {
+//       return res
+//         .status(400)
+//         .json({ error: `Auction id(s) not found: ${invalid.join(", ")}` });
+//     }
 
-    // ── 4. Prepare helpers  ──────────────────────────────────────────────────
-    const nextItemStmt = db.prepare(
-      "SELECT IFNULL(MAX(item_number),0)+1 AS next FROM items WHERE auction_id = ? AND COALESCE(is_deleted, 0) = 0"
-    );
-    const insertStmt = db.prepare(
-      `INSERT INTO items
-         (item_number, description, artist, contributor, notes, auction_id, date)
-       VALUES
-         (@item_number, @description, @artist, @contributor, @notes, @auction_id,
-          strftime('%d-%m-%Y %H:%M:%S','now','localtime'))`
-    );
+//     // ── 4. Prepare helpers  ──────────────────────────────────────────────────
+//     const nextItemStmt = db.prepare(
+//       "SELECT IFNULL(MAX(item_number),0)+1 AS next FROM items WHERE auction_id = ? AND COALESCE(is_deleted, 0) = 0"
+//     );
+//     const insertStmt = db.prepare(
+//       `INSERT INTO items
+//          (item_number, description, artist, contributor, notes, auction_id, date)
+//        VALUES
+//          (@item_number, @description, @artist, @contributor, @notes, @auction_id,
+//           strftime('%d-%m-%Y %H:%M:%S','now','localtime'))`
+//     );
 
-    // keep a local counter per auction to avoid N queries inside the loop
-    const nextNumber = Object.fromEntries(
-      auctionIds.map(id => [id, nextItemStmt.get(id).next])
-    );
+//     // keep a local counter per auction to avoid N queries inside the loop
+//     const nextNumber = Object.fromEntries(
+//       auctionIds.map(id => [id, nextItemStmt.get(id).next])
+//     );
 
-    // ── 5. Transactional bulk insert  ────────────────────────────────────────
-    const insertMany = db.transaction(list => {
-      for (const row of list) {
-        const aid = Number(row.auction_id);
-        insertStmt.run({
-          ...row,
-          auction_id: aid,
-          item_number: nextNumber[aid]++
-        });
-      }
-    });
-    insertMany(items);
+//     // ── 5. Transactional bulk insert  ────────────────────────────────────────
+//     const insertMany = db.transaction(list => {
+//       for (const row of list) {
+//         const aid = Number(row.auction_id);
+//         insertStmt.run({
+//           ...row,
+//           auction_id: aid,
+//           item_number: nextNumber[aid]++
+//         });
+//       }
+//     });
+//     insertMany(items);
 
-    res.json({ message: `${items.length} rows imported.` });
-    logFromRequest(
-      req,
-      logLevels.INFO,
-      `Bulk CSV import completed for ${items.length} items`
-    );
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-    logFromRequest(req, logLevels.ERROR, `Bulk CSV import failed: ${err.message}`);
-  } finally {
-    // clean up temp upload
-    try { fs.unlinkSync(req.file.path); } catch { }
-  }
-});
+//     res.json({ message: `${items.length} rows imported.` });
+//     logFromRequest(
+//       req,
+//       logLevels.INFO,
+//       `Bulk CSV import completed for ${items.length} items`
+//     );
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//     logFromRequest(req, logLevels.ERROR, `Bulk CSV import failed: ${err.message}`);
+//   } finally {
+//     // clean up temp upload
+//     try { fs.unlinkSync(req.file.path); } catch { }
+//   }
+// });
 
 //--------------------------------------------------------------------------
 // GET /photo-report

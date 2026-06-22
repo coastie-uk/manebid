@@ -460,6 +460,11 @@ Data flow:
 Current admin item behavior:
 
 - create uses the same `newitem` endpoint as the public form, but with admin auth
+- import items is a frontend-only CSV workflow in Manage Items:
+  - the browser parses `description`, `artist`, `contributor`, and `notes`
+  - optional per-row image files are staged locally with preview URLs
+  - no CSV data or image file is sent until the operator confirms import
+  - confirmed rows are submitted sequentially to the existing `newitem` endpoint
 - item deletion is now soft delete, not hard delete
 - deleted items can be restored
 - reorder endpoint also supports duplication when `copy=true`

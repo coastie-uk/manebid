@@ -93,7 +93,7 @@
               <button type="button" class="maintenance-tab-button is-active" data-tab="auction-management" data-tab-label="Auction Management">Auction Management</button>
               <button type="button" class="maintenance-tab-button" data-tab="add-new-auction" data-tab-label="Add New Auction">Add New Auction</button>
               <button type="button" class="maintenance-tab-button" data-tab="database-backups" data-tab-label="Database Backups">Database Backups</button>
-              <button type="button" class="maintenance-tab-button" data-tab="csv-import-export" data-tab-label="CSV Import / Export">CSV Import / Export</button>
+              <button type="button" class="maintenance-tab-button" data-tab="csv-import-export" data-tab-label="CSV Import / Export">Export Data</button>
               <button type="button" class="maintenance-tab-button" data-tab="diagnostics" data-tab-label="Diagnostics">Diagnostics</button>
               <button type="button" class="maintenance-tab-button" data-tab="user-management" data-tab-label="Manage Users">Manage Users</button>
               <button type="button" class="maintenance-tab-button" data-tab="messaging" data-tab-label="Messaging">Messaging</button>
@@ -255,25 +255,25 @@
           <section class="maintenance-tab-panel" data-tab-panel="csv-import-export" hidden>
             <div class="panel-head">
               <div>
-                <h2>CSV Import / Export</h2>
-                <div class="panel-subtle">Move auction table data in and out of the system using CSV bundles.</div>
+                <h2>CSV Export</h2>
+                <div class="panel-subtle">Export auction data as CSV.</div>
               </div>
             </div>
             <div class="panel-body maintenance-tab-body">
               <section class="maintenance-subpanel">
                 <div class="maintenance-subpanel-head">
                   <div>
-                    <h3>Import and Export</h3>
-                    <p>CSV columns: <code>description</code>, <code>artist</code>, <code>contributor</code>, <code>notes</code>, and <code>auction_id</code>.</p>
+                    <h3>Export</h3>
+
                   </div>
                 </div>
                 <div class="maintenance-actions-row">
                   <button id="export-csv" type="button">Export CSV</button>
                 </div>
-                <div class="maintenance-inline-form">
+                <!-- <div class="maintenance-inline-form">
                   <input type="file" id="import-csv" />
                   <button id="import-csv-btn" type="button">Import CSV</button>
-                </div>
+                </div> -->
               </section>
             </div>
           </section>

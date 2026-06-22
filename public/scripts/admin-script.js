@@ -32,6 +32,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const addCropImageButton = document.getElementById("add-crop-image");
     const editLivePhotoInput = document.getElementById("edit-photo-live");
     const addItemButton = document.getElementById("add-item");
+    const importItemsButton = document.getElementById("import-items");
     const manageBiddersButton = document.getElementById("manage-bidders");
     const refreshButton = document.getElementById("refresh");
     const liveFeedButton = document.getElementById("livefeed");
@@ -79,6 +80,14 @@ document.addEventListener("DOMContentLoaded", function () {
     const imagePreviewModalTitle = document.getElementById("image-preview-modal-title");
     const imagePreviewModalImage = document.getElementById("image-preview-modal-image");
     const closeImagePreviewModalButton = document.getElementById("close-image-preview-modal");
+    const importItemsModal = document.getElementById("import-items-modal");
+    const closeImportItemsModalButton = document.getElementById("close-import-items-modal");
+    const cancelImportItemsButton = document.getElementById("cancel-import-items");
+    const importItemsCsvInput = document.getElementById("import-items-csv");
+    const importItemsSummary = document.getElementById("import-items-summary");
+    const importItemsCounts = document.getElementById("import-items-counts");
+    const importItemsTableBody = document.getElementById("import-items-table-body");
+    const runImportItemsButton = document.getElementById("run-import-items");
     const aboutVersionSummaryEl = document.getElementById("about-version-summary");
     const aboutDatabaseIdEl = document.getElementById("about-database-id");
     const aboutDatabaseCreatedAtEl = document.getElementById("about-database-created-at");
@@ -118,6 +127,8 @@ document.addEventListener("DOMContentLoaded", function () {
     let addDraftImageFilename = "";
     let addDraftImageUrl = "";
     let activeCropContext = "edit";
+    let importRows = [];
+    let importInProgress = false;
     const downloadedPptxJobs = new Set();
 
     document.getElementById("sort-field").value = selectedSort;
@@ -134,6 +145,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const API = "/api";
     const OPEN_MOVE_PANEL_KEY = "admin_open_move_panel_item";
     const EDITABLE_AUCTION_STATUSES = new Set(["setup", "locked"]);
+    const ITEM_CREATION_AUCTION_STATUSES = new Set(["setup", "locked", "live"]);
     const ITEM_DETAIL_FIELDS = Object.freeze([
         "id",
         "description",
@@ -358,6 +370,380 @@ document.addEventListener("DOMContentLoaded", function () {
         addRotateLeftButton.disabled = !hasPhoto;
         addRotateRightButton.disabled = !hasPhoto;
         addCropImageButton.disabled = !hasPhoto;
+    }
+
+    function revokeImportImageUrls() {
+        importRows.forEach((row) => {
+            if (row.imageUrl) {
+                URL.revokeObjectURL(row.imageUrl);
+                row.imageUrl = "";
+            }
+        });
+    }
+
+    function resetImportItemsModal() {
+        revokeImportImageUrls();
+        importRows = [];
+        importInProgress = false;
+        if (importItemsCsvInput) importItemsCsvInput.value = "";
+        if (importItemsSummary) {
+            importItemsSummary.textContent = "Choose a CSV file to preview items before import.";
+            importItemsSummary.classList.remove("is-error");
+        }
+        if (importItemsCounts) importItemsCounts.textContent = "No rows loaded.";
+        if (runImportItemsButton) runImportItemsButton.disabled = true;
+        renderImportItemsRows();
+    }
+
+    function parseCsvRows(text) {
+        const rows = [];
+        let row = [];
+        let field = "";
+        let inQuotes = false;
+
+        for (let index = 0; index < text.length; index += 1) {
+            const char = text[index];
+
+            if (inQuotes) {
+                if (char === '"') {
+                    if (text[index + 1] === '"') {
+                        field += '"';
+                        index += 1;
+                    } else {
+                        inQuotes = false;
+                    }
+                } else {
+                    field += char;
+                }
+                continue;
+            }
+
+            if (char === '"') {
+                inQuotes = true;
+            } else if (char === ",") {
+                row.push(field);
+                field = "";
+            } else if (char === "\r" || char === "\n") {
+                row.push(field);
+                rows.push(row);
+                row = [];
+                field = "";
+                if (char === "\r" && text[index + 1] === "\n") index += 1;
+            } else {
+                field += char;
+            }
+        }
+
+        if (inQuotes) {
+            throw new Error("CSV contains an unterminated quoted value.");
+        }
+
+        if (field.length > 0 || row.length > 0) {
+            row.push(field);
+            rows.push(row);
+        }
+
+        return rows;
+    }
+
+    function readTextFile(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ""));
+            reader.onerror = () => reject(new Error("Unable to read the selected file."));
+            reader.readAsText(file);
+        });
+    }
+
+    function normalizeImportHeader(value) {
+        return normalizeString(value).trim().toLowerCase();
+    }
+
+    function setImportValidationMessage(message, isError = false) {
+        if (!importItemsSummary) return;
+        importItemsSummary.textContent = message;
+        importItemsSummary.classList.toggle("is-error", isError);
+    }
+
+    function buildImportRows(csvRows) {
+        const requiredHeaders = ["description", "artist", "contributor", "notes"];
+        const headerRow = csvRows.find((row) => row.some((cell) => normalizeString(cell).trim() !== ""));
+        if (!headerRow) {
+            throw new Error("CSV contains no header row.");
+        }
+
+        const headers = headerRow.map(normalizeImportHeader);
+        const missingHeaders = requiredHeaders.filter((header) => !headers.includes(header));
+        if (missingHeaders.length > 0) {
+            throw new Error(`Missing required CSV column${missingHeaders.length === 1 ? "" : "s"}: ${missingHeaders.join(", ")}.`);
+        }
+
+        const headerIndex = csvRows.indexOf(headerRow);
+        const indexes = Object.fromEntries(requiredHeaders.map((header) => [header, headers.indexOf(header)]));
+        const parsedRows = [];
+
+        csvRows.slice(headerIndex + 1).forEach((csvRow, rowIndex) => {
+            const sourceRowNumber = headerIndex + rowIndex + 2;
+            if (!csvRow.some((cell) => normalizeString(cell).trim() !== "")) return;
+
+            const item = {
+                id: `${Date.now()}-${sourceRowNumber}-${parsedRows.length}`,
+                sourceRowNumber,
+                description: normalizeString(csvRow[indexes.description]).trim(),
+                artist: normalizeString(csvRow[indexes.artist]).trim(),
+                contributor: normalizeString(csvRow[indexes.contributor]).trim(),
+                notes: normalizeString(csvRow[indexes.notes]).trim(),
+                imageFile: null,
+                imageUrl: "",
+                selected: true,
+                valid: true,
+                importState: "pending",
+                statusMessage: "Pending"
+            };
+
+            const validationMessages = [];
+            if (!item.description) validationMessages.push("missing description");
+            if (!item.contributor) validationMessages.push("missing contributor");
+            if (validationMessages.length > 0) {
+                item.valid = false;
+                item.selected = false;
+                item.importState = "invalid";
+                item.statusMessage = validationMessages.join(", ");
+            }
+
+            parsedRows.push(item);
+        });
+
+        if (parsedRows.length === 0) {
+            throw new Error("CSV contains no data rows.");
+        }
+
+        return parsedRows;
+    }
+
+    function getImportSelectedRows() {
+        return importRows.filter((row) => row.valid && row.selected && row.importState !== "imported");
+    }
+
+    function updateImportCounts() {
+        const validCount = importRows.filter((row) => row.valid).length;
+        const selectedCount = getImportSelectedRows().length;
+        const importedCount = importRows.filter((row) => row.importState === "imported").length;
+        const failedCount = importRows.filter((row) => row.importState === "failed").length;
+
+        if (importItemsCounts) {
+            importItemsCounts.textContent = importRows.length === 0
+                ? "No rows loaded."
+                : `${selectedCount} selected, ${validCount} valid, ${importedCount} imported, ${failedCount} failed.`;
+        }
+
+        if (runImportItemsButton) {
+            runImportItemsButton.disabled = importInProgress || selectedCount === 0;
+        }
+        if (importItemsCsvInput) importItemsCsvInput.disabled = importInProgress;
+        if (closeImportItemsModalButton) closeImportItemsModalButton.disabled = importInProgress;
+        if (cancelImportItemsButton) cancelImportItemsButton.disabled = importInProgress;
+    }
+
+    function setImportRowStateClass(tableRow, importRow) {
+        tableRow.classList.toggle("is-invalid", !importRow.valid);
+        tableRow.classList.toggle("is-importing", importRow.importState === "importing");
+        tableRow.classList.toggle("is-imported", importRow.importState === "imported");
+        tableRow.classList.toggle("is-failed", importRow.importState === "failed");
+    }
+
+    function appendImportCell(tableRow, text, className = "") {
+        const cell = document.createElement("td");
+        if (className) cell.className = className;
+        cell.textContent = text;
+        tableRow.appendChild(cell);
+        return cell;
+    }
+
+    function renderImportItemsRows() {
+        if (!importItemsTableBody) return;
+        importItemsTableBody.innerHTML = "";
+
+        if (importRows.length === 0) {
+            const emptyRow = document.createElement("tr");
+            const emptyCell = document.createElement("td");
+            emptyCell.colSpan = 9;
+            emptyCell.className = "import-items-empty";
+            emptyCell.textContent = "No CSV loaded.";
+            emptyRow.appendChild(emptyCell);
+            importItemsTableBody.appendChild(emptyRow);
+            updateImportCounts();
+            return;
+        }
+
+        importRows.forEach((importRow) => {
+            const tableRow = document.createElement("tr");
+            tableRow.dataset.importRowId = importRow.id;
+            setImportRowStateClass(tableRow, importRow);
+
+            const selectCell = document.createElement("td");
+            const selectInput = document.createElement("input");
+            selectInput.type = "checkbox";
+            selectInput.className = "js-import-row-select";
+            selectInput.dataset.importRowId = importRow.id;
+            selectInput.checked = importRow.selected;
+            selectInput.disabled = importInProgress || !importRow.valid || importRow.importState === "imported";
+            selectInput.setAttribute("aria-label", `Import CSV row ${importRow.sourceRowNumber}`);
+            selectCell.appendChild(selectInput);
+            tableRow.appendChild(selectCell);
+
+            appendImportCell(tableRow, String(importRow.sourceRowNumber), "import-row-number");
+            appendImportCell(tableRow, importRow.description);
+            appendImportCell(tableRow, importRow.artist);
+            appendImportCell(tableRow, importRow.contributor);
+            appendImportCell(tableRow, importRow.notes);
+
+            const imageCell = document.createElement("td");
+            const imageInput = document.createElement("input");
+            imageInput.type = "file";
+            imageInput.accept = "image/*";
+            imageInput.className = "js-import-row-image";
+            imageInput.dataset.importRowId = importRow.id;
+            imageInput.disabled = importInProgress || !importRow.valid || importRow.importState === "imported";
+            imageInput.setAttribute("aria-label", `Choose image for CSV row ${importRow.sourceRowNumber}`);
+            imageCell.appendChild(imageInput);
+            tableRow.appendChild(imageCell);
+
+            const previewCell = document.createElement("td");
+            if (importRow.imageUrl) {
+                const preview = document.createElement("img");
+                preview.className = "import-image-preview";
+                preview.src = importRow.imageUrl;
+                preview.alt = `Selected image preview for CSV row ${importRow.sourceRowNumber}`;
+                previewCell.appendChild(preview);
+            } else {
+                const placeholder = document.createElement("span");
+                placeholder.className = "import-image-placeholder";
+                placeholder.textContent = "No image";
+                previewCell.appendChild(placeholder);
+            }
+            tableRow.appendChild(previewCell);
+
+            const statusCell = appendImportCell(tableRow, importRow.statusMessage, "import-row-status");
+            statusCell.dataset.state = importRow.importState;
+
+            importItemsTableBody.appendChild(tableRow);
+        });
+
+        updateImportCounts();
+    }
+
+    async function loadImportCsvFile(file) {
+        if (!file) return;
+        try {
+            const text = await readTextFile(file);
+            const csvRows = parseCsvRows(text);
+            revokeImportImageUrls();
+            importRows = buildImportRows(csvRows);
+            setImportValidationMessage(`Loaded ${importRows.length} CSV row${importRows.length === 1 ? "" : "s"}. Review the data and choose images before importing.`);
+            renderImportItemsRows();
+        } catch (error) {
+            revokeImportImageUrls();
+            importRows = [];
+            setImportValidationMessage(error.message || "CSV could not be parsed.", true);
+            renderImportItemsRows();
+        }
+    }
+
+    function openImportItemsModal() {
+        const availability = getItemCreationAvailability();
+        if (!availability.allowed) {
+            showMessage(availability.reason, "error");
+            return;
+        }
+        closeMenuGroups();
+        resetImportItemsModal();
+        if (importItemsModal) importItemsModal.hidden = false;
+    }
+
+    function closeImportItemsModal() {
+        if (importInProgress) {
+            showMessage("Import is still running.", "info");
+            return;
+        }
+        if (importItemsModal) importItemsModal.hidden = true;
+        resetImportItemsModal();
+    }
+
+    async function importSelectedRows() {
+        const selectedRows = getImportSelectedRows();
+        if (selectedRows.length === 0) {
+            showMessage("No valid rows selected for import.", "info");
+            return;
+        }
+
+        const selectedAuction = getSelectedAuction();
+        const selectedAuctionPublicId = selectedAuction?.public_id;
+        if (!selectedAuctionPublicId) {
+            showMessage("Selected auction is missing its public ID.", "error");
+            return;
+        }
+
+        const token = getTokenOrLogout();
+        if (!token) return;
+
+        importInProgress = true;
+        renderImportItemsRows();
+
+        let importedCount = 0;
+        let failedCount = 0;
+
+        for (const importRow of selectedRows) {
+            importRow.importState = "importing";
+            importRow.statusMessage = "Importing";
+            renderImportItemsRows();
+
+            const formData = new FormData();
+            formData.append("description", importRow.description);
+            formData.append("contributor", importRow.contributor);
+            formData.append("artist", importRow.artist);
+            formData.append("notes", importRow.notes);
+            if (importRow.imageFile) {
+                formData.append("photo", importRow.imageFile, importRow.imageFile.name || `import-row-${importRow.sourceRowNumber}.jpg`);
+            }
+
+            try {
+                const response = await fetch(`${API}/auctions/${selectedAuctionPublicId}/newitem`, {
+                    method: "POST",
+                    headers: { "Authorization": token },
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const data = await response.json().catch(() => ({}));
+                    throw new Error(data.error || "Import failed");
+                }
+
+                importRow.importState = "imported";
+                importRow.statusMessage = "Imported";
+                importRow.selected = false;
+                importedCount += 1;
+            } catch (error) {
+                importRow.importState = "failed";
+                importRow.statusMessage = error.message || "Import failed";
+                failedCount += 1;
+            }
+        }
+
+        importInProgress = false;
+        renderImportItemsRows();
+
+        if (importedCount > 0) {
+            loadItems();
+        }
+
+        if (failedCount > 0) {
+            showMessage(`Imported ${importedCount} item${importedCount === 1 ? "" : "s"}; ${failedCount} failed.`, "error");
+            return;
+        }
+
+        showMessage(`Imported ${importedCount} item${importedCount === 1 ? "" : "s"}.`, "success");
+        closeImportItemsModal();
     }
 
     function setDraftImageBlob(blob, fileName = "edited-photo.jpg") {
@@ -1676,6 +2062,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (currentAuctionPill) currentAuctionPill.textContent = `Auction: ${auctionLabel}`;
         if (currentStatePill) currentStatePill.textContent = `State: ${stateLabel}`;
         updateGoMenuAvailability();
+        updateItemCreationAvailability();
     }
 
     function updateGoMenuAvailability() {
@@ -1693,6 +2080,30 @@ document.addEventListener("DOMContentLoaded", function () {
             cashierPageButton.disabled = !selectedAuction;
             cashierPageButton.title = selectedAuction ? "" : "Please select an auction first";
         }
+    }
+
+    function getItemCreationAvailability() {
+        const selectedAuction = getSelectedAuction();
+        const auctionStatus = String(selectedAuction?.status || "").toLowerCase();
+        if (!selectedAuction) {
+            return { allowed: false, reason: "Please select an auction first" };
+        }
+        if (!ITEM_CREATION_AUCTION_STATUSES.has(auctionStatus)) {
+            return {
+                allowed: false,
+                reason: `Item creation is unavailable while the auction is in ${auctionStatus || "an unknown"} state`
+            };
+        }
+        return { allowed: true, reason: "" };
+    }
+
+    function updateItemCreationAvailability() {
+        const availability = getItemCreationAvailability();
+        [addItemButton, importItemsButton].forEach((button) => {
+            if (!button) return;
+            button.disabled = !availability.allowed;
+            button.title = availability.reason;
+        });
     }
 
     function renderChoiceMenu(container, choices, selectedValue, { disabled = false, titleWhenDisabled = "" } = {}) {
@@ -1744,49 +2155,45 @@ document.addEventListener("DOMContentLoaded", function () {
     function promptPasswordChange() {
         return new Promise((resolve) => {
             const overlay = document.createElement("div");
-            overlay.style.cssText = `
-                position: fixed; inset: 0; background: rgba(0,0,0,.5);
-                display: flex; align-items: center; justify-content: center; z-index: 9999;
-            `;
+            overlay.className = "password-modal-overlay";
 
             const box = document.createElement("div");
-            box.style.cssText = `
-                background: #fff; padding: 16px; border-radius: 8px; width: min(420px, 92vw);
-                box-shadow: 0 8px 24px rgba(0,0,0,.2); font-family: system-ui, sans-serif;
-            `;
+            box.className = "password-modal-card";
 
             const heading = document.createElement("div");
             heading.textContent = "Change password";
-            heading.style.cssText = "font-weight: 600; margin-bottom: 10px;";
+            heading.className = "password-modal-title";
 
             const currentInput = document.createElement("input");
             currentInput.type = "password";
             currentInput.placeholder = "Current password";
             currentInput.autocomplete = "current-password";
-            currentInput.style.cssText = "width:100%; padding:8px; margin-bottom:8px; box-sizing:border-box;";
+            currentInput.className = "password-modal-input";
 
             const newInput = document.createElement("input");
             newInput.type = "password";
             newInput.placeholder = "New password";
             newInput.autocomplete = "new-password";
-            newInput.style.cssText = "width:100%; padding:8px; margin-bottom:8px; box-sizing:border-box;";
+            newInput.className = "password-modal-input";
 
             const confirmInput = document.createElement("input");
             confirmInput.type = "password";
             confirmInput.placeholder = "Confirm new password";
             confirmInput.autocomplete = "new-password";
-            confirmInput.style.cssText = "width:100%; padding:8px; box-sizing:border-box;";
+            confirmInput.className = "password-modal-input";
 
             const row = document.createElement("div");
-            row.style.cssText = "display:flex; justify-content:flex-end; gap:8px; margin-top:12px;";
+            row.className = "password-modal-actions";
 
             const cancel = document.createElement("button");
             cancel.type = "button";
             cancel.textContent = "Cancel";
+            cancel.className = "password-modal-button";
 
             const submit = document.createElement("button");
             submit.type = "button";
             submit.textContent = "Update";
+            submit.className = "password-modal-button password-modal-button--primary";
 
             function close(result) {
                 overlay.remove();
@@ -2135,9 +2542,54 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
     addItemButton.addEventListener("click", function () {
+        const availability = getItemCreationAvailability();
+        if (!availability.allowed) {
+            showMessage(availability.reason, "error");
+            return;
+        }
         closeMenuGroups();
         resetAddDraftState();
         showSection("add-section");
+    });
+
+    importItemsButton?.addEventListener("click", openImportItemsModal);
+    closeImportItemsModalButton?.addEventListener("click", closeImportItemsModal);
+    cancelImportItemsButton?.addEventListener("click", closeImportItemsModal);
+    runImportItemsButton?.addEventListener("click", () => {
+        void importSelectedRows();
+    });
+    importItemsCsvInput?.addEventListener("change", () => {
+        const file = importItemsCsvInput.files?.[0];
+        void loadImportCsvFile(file);
+    });
+    importItemsTableBody?.addEventListener("change", (event) => {
+        const target = event.target;
+        const rowId = target?.dataset?.importRowId;
+        const importRow = importRows.find((row) => row.id === rowId);
+        if (!importRow) return;
+
+        if (target.classList.contains("js-import-row-select")) {
+            importRow.selected = target.checked;
+            updateImportCounts();
+            return;
+        }
+
+        if (target.classList.contains("js-import-row-image")) {
+            if (importRow.imageUrl) {
+                URL.revokeObjectURL(importRow.imageUrl);
+                importRow.imageUrl = "";
+            }
+            importRow.imageFile = target.files?.[0] || null;
+            if (importRow.imageFile) {
+                importRow.imageUrl = URL.createObjectURL(importRow.imageFile);
+            }
+            renderImportItemsRows();
+        }
+    });
+    importItemsModal?.addEventListener("click", (event) => {
+        if (event.target === importItemsModal) {
+            closeImportItemsModal();
+        }
     });
 
     openExportPanelButton.addEventListener("click", function () {
@@ -3064,6 +3516,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
         const id = parseInt(duplicateButton.dataset.id, 10);
         if (!id || isNaN(id)) return;
+
+        const modal = await DayPilot.Modal.confirm("Are you sure you want to duplicate this item?", { okText: "Yes", cancelText: "Cancel" });
+        if (modal.canceled) {
+
+            return;
+        }
+
 
         duplicateButton.disabled = true;
         showMessage(`Duplicating item....`, "info");
