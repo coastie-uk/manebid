@@ -91,18 +91,13 @@
           <div class="panel-body maintenance-nav-body">
             <nav class="maintenance-nav-list" aria-label="Maintenance categories">
               <button type="button" class="maintenance-tab-button is-active" data-tab="auction-management" data-tab-label="Auction Management">Auction Management</button>
-              <button type="button" class="maintenance-tab-button" data-tab="add-new-auction" data-tab-label="Add New Auction">Add New Auction</button>
-              <button type="button" class="maintenance-tab-button" data-tab="database-backups" data-tab-label="Database Backups">Database Backups</button>
-              <button type="button" class="maintenance-tab-button" data-tab="csv-import-export" data-tab-label="CSV Import / Export">Export Data</button>
-              <button type="button" class="maintenance-tab-button" data-tab="diagnostics" data-tab-label="Diagnostics">Diagnostics</button>
               <button type="button" class="maintenance-tab-button" data-tab="user-management" data-tab-label="Manage Users">Manage Users</button>
-              <button type="button" class="maintenance-tab-button" data-tab="messaging" data-tab-label="Messaging">Messaging</button>
-              <button type="button" class="maintenance-tab-button" data-tab="test-data-generator" data-tab-label="Test Data Generator">Test Data Generator</button>
               <button type="button" class="maintenance-tab-button" data-tab="template-editor" data-tab-label="Template Editor">Template Editor</button>
               <button type="button" class="maintenance-tab-button" data-tab="image-management" data-tab-label="Image Management">Image Management</button>
               <button type="button" class="maintenance-tab-button" data-tab="payment-management" data-tab-label="Payment Management">Payment Management</button>
               <button type="button" class="maintenance-tab-button" data-tab="audit-viewer" data-tab-label="Audit Viewer">Audit Viewer</button>
-              <button type="button" class="maintenance-tab-button" data-tab="server-logs" data-tab-label="Server Logs">Server Logs</button>
+              <button type="button" class="maintenance-tab-button" data-tab="database-backups" data-tab-label="Database Backups">Database Backups</button>
+              <button type="button" class="maintenance-tab-button" data-tab="diagnostics" data-tab-label="Advanced">Advanced</button>
             </nav>
           </div>
         </aside>
@@ -116,6 +111,18 @@
               </div>
             </div>
             <div class="panel-body maintenance-tab-body">
+              <section class="maintenance-subpanel">
+                <div class="maintenance-subpanel-head">
+                  <div>
+                    <h3>Create New Auction</h3>
+                    <p>Create a new auction with its public URL tag, display name, and logo.</p>
+                  </div>
+                  <div class="maintenance-actions-row">
+                    <button id="open-add-auction-modal" type="button">Add New Auction</button>
+                  </div>
+                </div>
+              </section>
+
               <section class="maintenance-subpanel">
                 <div class="maintenance-subpanel-head">
                   <div>
@@ -143,42 +150,10 @@
             </div>
           </section>
 
-          <section class="maintenance-tab-panel" data-tab-panel="add-new-auction" hidden>
-            <div class="panel-head">
-              <div>
-                <h2>Add New Auction</h2>
-                <div class="panel-subtle">Create a new auction with its public URL tag, display name, and logo.</div>
-              </div>
-            </div>
-            <div class="panel-body maintenance-tab-body">
-              <section class="maintenance-subpanel">
-                <div class="maintenance-subpanel-head">
-                  <div>
-                    <h3>Create New Auction</h3>
-                    <p>Add the public URL tag, display name, and logo before opening a new event.</p>
-                  </div>
-                </div>
-                <div class="maintenance-form-grid">
-                  <label for="auction-full-name">Auction Name</label>
-                  <input type="text" id="auction-full-name" placeholder="e.g. Festival of Friendship 2026" />
-
-                  <label for="auction-short-name">URL Tag</label>
-                  <input type="text" id="auction-short-name" placeholder="e.g. fof2026" />
-
-                  <label for="auction-logo-select">Auction Logo</label>
-                  <select id="auction-logo-select"></select>
-                </div>
-                <div class="maintenance-actions-row">
-                  <button id="create-auction" type="button">Create Auction</button>
-                </div>
-              </section>
-            </div>
-          </section>
-
           <section class="maintenance-tab-panel" data-tab-panel="database-backups" hidden>
             <div class="panel-head">
               <div>
-                <h2>Database Backups</h2>
+                <h2>Backup / Restore</h2>
                 <div class="panel-subtle">Create managed server backups, inspect their contents, and restore the installation safely.</div>
               </div>
             </div>
@@ -192,6 +167,7 @@
                 </div>
                 <div class="maintenance-actions-row">
                   <button id="open-create-backup-modal" type="button">Create Backup on Server</button>
+                  <button id="open-import-backup-modal" type="button">Import Backup</button>
                 </div>
               </section>
 
@@ -236,67 +212,29 @@
                 </div>
               </section>
 
-              <section class="maintenance-subpanel">
-                <div class="maintenance-subpanel-head">
-                  <div>
-                    <h3>Legacy Local DB Restore</h3>
-                    <p>Use this only for older local `.db` backup files. This path remains available for backwards compatibility.</p>
-                  </div>
-                </div>
-                <div class="maintenance-inline-form">
-                  <input type="file" id="restore-file" />
-                  <button id="restore-db" type="button">Restore Database from Local Backup</button>
-                  <button id="download-db-file" type="button">Download Current Database File</button>
-                </div>
-              </section>
-            </div>
-          </section>
-
-          <section class="maintenance-tab-panel" data-tab-panel="csv-import-export" hidden>
-            <div class="panel-head">
-              <div>
-                <h2>CSV Export</h2>
-                <div class="panel-subtle">Export auction data as CSV.</div>
-              </div>
-            </div>
-            <div class="panel-body maintenance-tab-body">
-              <section class="maintenance-subpanel">
-                <div class="maintenance-subpanel-head">
-                  <div>
-                    <h3>Export</h3>
-
-                  </div>
-                </div>
-                <div class="maintenance-actions-row">
-                  <button id="export-csv" type="button">Export CSV</button>
-                </div>
-                <!-- <div class="maintenance-inline-form">
-                  <input type="file" id="import-csv" />
-                  <button id="import-csv-btn" type="button">Import CSV</button>
-                </div> -->
-              </section>
             </div>
           </section>
 
           <section class="maintenance-tab-panel" data-tab-panel="diagnostics" hidden>
             <div class="panel-head">
               <div>
-                <h2>Diagnostics</h2>
-                <div class="panel-subtle">Run storage, integrity, and service checks before deeper intervention.</div>
+                <h2>Advanced</h2>
+                <div class="panel-subtle">Manage messaging, export data, inspect logs, and run storage, integrity, and service checks.</div>
               </div>
             </div>
             <div class="panel-body maintenance-tab-body">
               <section class="maintenance-subpanel">
                 <div class="maintenance-subpanel-head">
                   <div>
-                    <h3>Photo Storage</h3>
+                    <h3>Storage Report</h3>
                     <p>Review storage usage and remove orphaned image files.</p>
                   </div>
                 </div>
                 <div class="maintenance-actions-row">
-                  <button id="photo-report" type="button">Get Photo Storage Report</button>
+                  <button id="photo-report" type="button">Generate Storage Report</button>
                   <button id="cleanup-orphans" type="button">Clean Up Unused Photos</button>
                 </div>
+                <div id="photo-storage-results" class="maintenance-result-box storage-report-box" style="display:none;"></div>
               </section>
 
               <section class="maintenance-subpanel">
@@ -328,65 +266,19 @@
                   <button id="restart-server" type="button">Restart Server</button>
                 </div>
               </section>
-            </div>
-          </section>
-
-          <section class="maintenance-tab-panel" data-tab-panel="user-management" hidden>
-            <div class="panel-head">
-              <div>
-                <h2>Manage Users</h2>
-                <div class="panel-subtle">Manage account access and password resets.</div>
-              </div>
-            </div>
-            <div class="panel-body maintenance-tab-body">
-              <section class="maintenance-subpanel">
-                <div class="maintenance-subpanel-head">
-                  <div>
-                    <h3>User Accounts</h3>
-                  </div>
-                </div>
-                <div class="table-wrap">
-                  <table id="user-table" class="maintenance-data-table">
-                    <thead>
-                      <tr>
-                        <th>Username</th>
-                        <th>Manage Items</th>
-                        <th>Manage Payments</th>
-                        <th>Manage Auctions</th>
-                        <th>Slideshow</th>
-                        <th>Manage Collections</th>
-                        <th>Manage Bids</th>
-                        <th>Manage Users</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody id="user-table-body"></tbody>
-                  </table>
-                </div>
-              </section>
 
               <section class="maintenance-subpanel">
                 <div class="maintenance-subpanel-head">
                   <div>
-                    <h3>Add User</h3>
-                    <p>Create a new user and define their access to the app.</p>
-                  </div>
-                  <div class="maintenance-actions-row">
-                    <button id="open-add-user-modal" type="button">Add User...</button>
+                    <h3>Export Data</h3>
+                    <p>Export auction data as CSV.</p>
                   </div>
                 </div>
+                <div class="maintenance-actions-row">
+                  <button id="export-csv" type="button">Export CSV</button>
+                </div>
               </section>
-            </div>
-          </section>
 
-          <section class="maintenance-tab-panel" data-tab-panel="messaging" hidden>
-            <div class="panel-head">
-              <div>
-                <h2>Messaging</h2>
-                <div class="panel-subtle">Monitor and manage the persistent operator message cache.</div>
-              </div>
-            </div>
-            <div class="panel-body maintenance-tab-body">
               <section class="maintenance-subpanel">
                 <div class="maintenance-subpanel-head">
                   <div>
@@ -437,37 +329,67 @@
                 </div>
                 <p id="messaging-cache-note" class="panel-subtle">Use CSV export before clearing if message records are needed after the event.</p>
               </section>
+
+              <section class="maintenance-subpanel">
+                <div class="maintenance-subpanel-head">
+                  <div>
+                    <h3>Server Logs</h3>
+                    <p>Refresh inline logs or pop them into a dedicated window for monitoring.</p>
+                  </div>
+                </div>
+                <div class="maintenance-actions-row">
+                  <button id="load-logs" type="button">Refresh Logs</button>
+                  <button id="popout-logs" type="button">Pop Out Log Viewer</button>
+                  <label class="maintenance-inline-toggle"><input type="checkbox" id="auto-refresh-logs" /> Auto-refresh every 5 seconds</label>
+                </div>
+                <div id="server-logs" class="maintenance-log-box" aria-live="polite"></div>
+              </section>
             </div>
           </section>
 
-          <section class="maintenance-tab-panel" data-tab-panel="test-data-generator" hidden>
+          <section class="maintenance-tab-panel" data-tab-panel="user-management" hidden>
             <div class="panel-head">
               <div>
-                <h2>Test Data Generator</h2>
-                <div class="panel-subtle">Populate an auction with sample lots and bids for rehearsals and demos.</div>
+                <h2>Manage Users</h2>
+                <div class="panel-subtle">Manage account access and password resets.</div>
               </div>
             </div>
             <div class="panel-body maintenance-tab-body">
               <section class="maintenance-subpanel">
-                <div class="maintenance-form-grid">
-                  <label for="test-auction-select">Target Auction</label>
-                  <select id="test-auction-select">
-                    <option value="">-- Select Auction --</option>
-                  </select>
-
-                  <label for="test-count">Number of Test Items</label>
-                  <input type="number" id="test-count" placeholder="Number of test items (e.g. 10)" min="1" max="1000" />
-
-                  <label for="test-bid-count">Number of Bids</label>
-                  <input type="number" id="test-bid-count" min="1" />
-
-                  <label for="test-bidder-count">Number of Bidders</label>
-                  <input type="number" id="test-bidder-count" min="1" />
+                <div class="maintenance-subpanel-head">
+                  <div>
+                    <h3>User Accounts</h3>
+                  </div>
                 </div>
-                <div class="maintenance-actions-row">
-                  <button id="generate-test-data" type="button">Generate Test Items</button>
-                  <button id="generate-bids-btn" type="button">Generate Test Bids</button>
-                  <button id="delete-test-bids" type="button" class="danger-button">Delete Test Bids</button>
+                <div class="table-wrap">
+                  <table id="user-table" class="maintenance-data-table">
+                    <thead>
+                      <tr>
+                        <th>Username</th>
+                        <th>Manage Items</th>
+                        <th>Manage Payments</th>
+                        <th>Manage Auctions</th>
+                        <th>Slideshow</th>
+                        <th>Manage Collections</th>
+                        <th>Manage Bids</th>
+                        <th>Manage Users</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="user-table-body"></tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section class="maintenance-subpanel">
+                <div class="maintenance-subpanel-head">
+                  <div>
+                    <h3>Add User</h3>
+                    <p>Create a new user and define their access to the app.</p>
+                  </div>
+                  <div class="maintenance-actions-row">
+                    <button id="open-add-user-modal" type="button">Add User...</button>
+                  </div>
                 </div>
               </section>
             </div>
@@ -623,28 +545,71 @@
             </div>
           </section>
 
-          <section class="maintenance-tab-panel" data-tab-panel="server-logs" hidden>
-            <div class="panel-head">
-              <div>
-                <h2>Server Logs</h2>
-                <div class="panel-subtle">Refresh inline logs or pop them into a dedicated window for monitoring.</div>
-              </div>
-            </div>
-            <div class="panel-body maintenance-tab-body">
-              <section class="maintenance-subpanel">
-                <div class="maintenance-actions-row">
-                  <button id="load-logs" type="button">Refresh Logs</button>
-                  <button id="popout-logs" type="button">Pop Out Log Viewer</button>
-                  <label class="maintenance-inline-toggle"><input type="checkbox" id="auto-refresh-logs" /> Auto-refresh every 5 seconds</label>
-                </div>
-                <div id="server-logs" class="maintenance-log-box" aria-live="polite"></div>
-              </section>
-            </div>
-          </section>
         </section>
       </div>
 
       <div id="output"></div>
+
+      <div id="add-auction-modal" class="app-modal" hidden>
+        <div class="app-modal-card">
+          <div class="app-modal-header">
+            <div>
+              <h3>Add New Auction</h3>
+              <p>Add the public URL tag, display name, and logo before opening a new event.</p>
+            </div>
+            <button id="close-add-auction-modal" type="button" class="app-modal-close" aria-label="Close add auction dialog">Close</button>
+          </div>
+          <div class="maintenance-form-grid">
+            <label for="auction-full-name">Auction Name</label>
+            <input type="text" id="auction-full-name" placeholder="e.g. Festival of Friendship 2026" />
+
+            <label for="auction-short-name">URL Tag</label>
+            <input type="text" id="auction-short-name" placeholder="e.g. fof2026" />
+
+            <label for="auction-logo-select">Auction Logo</label>
+            <select id="auction-logo-select"></select>
+          </div>
+          <div class="maintenance-actions-row modal-actions-row">
+            <button id="create-auction" type="button">Create Auction</button>
+            <button id="cancel-add-auction" type="button" class="app-modal-close">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="test-data-modal" class="app-modal" hidden>
+        <div class="app-modal-card">
+          <div class="app-modal-header">
+            <div>
+              <h3>Test Data Generator</h3>
+              <p>Populate the selected auction with sample lots and bids for rehearsals and demos.</p>
+            </div>
+            <button id="close-test-data-modal" type="button" class="app-modal-close" aria-label="Close test data dialog">Close</button>
+          </div>
+          <div class="test-data-auction-summary">
+            <span>Target Auction</span>
+            <strong id="test-auction-name">No auction selected</strong>
+            <span>Current State</span>
+            <strong id="test-auction-state">Unknown</strong>
+          </div>
+          <input type="hidden" id="test-auction-select" />
+          <div class="maintenance-form-grid">
+            <label for="test-count">Number of Test Items</label>
+            <input type="number" id="test-count" placeholder="Number of test items (e.g. 10)" min="1" max="1000" />
+
+            <label for="test-bid-count">Number of Bids</label>
+            <input type="number" id="test-bid-count" min="1" />
+
+            <label for="test-bidder-count">Number of Bidders</label>
+            <input type="number" id="test-bidder-count" min="1" />
+          </div>
+          <div class="maintenance-actions-row modal-actions-row">
+            <button id="generate-test-data" type="button">Generate Test Items</button>
+            <button id="generate-bids-btn" type="button">Generate Test Bids</button>
+            <button id="delete-test-bids" type="button" class="danger-button">Delete Test Bids</button>
+            <button id="cancel-test-data" type="button" class="app-modal-close">Close</button>
+          </div>
+        </div>
+      </div>
 
       <div id="auction-qr-modal" class="app-modal" hidden>
         <div class="app-modal-card app-modal-card--wide">
@@ -831,6 +796,84 @@
           <div class="maintenance-actions-row modal-actions-row">
             <button id="backup-db" type="button">Create Backup</button>
             <button id="cancel-create-backup" type="button" class="app-modal-close">Close</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="import-backup-modal" class="app-modal" hidden>
+        <div class="app-modal-card app-modal-card--wide">
+          <div class="app-modal-header">
+            <div>
+              <h3>Import Backup</h3>
+              <p>Upload a managed backup zip, inspect it against the manifest, and then add it to this server's backup list.</p>
+            </div>
+            <button id="close-import-backup-modal" type="button" class="app-modal-close" aria-label="Close import backup dialog">Close</button>
+          </div>
+          <div class="backup-modal-scroll">
+            <div class="maintenance-form-grid">
+              <label for="import-backup-file">Backup Zip File</label>
+              <input type="file" id="import-backup-file" accept=".zip,application/zip" />
+            </div>
+            <div id="import-backup-status" class="maintenance-result-box" aria-live="polite">
+              Select a managed backup zip to inspect.
+            </div>
+            <div id="import-backup-progress-wrap" class="maintenance-upload-progress" hidden>
+              <div class="maintenance-upload-progress-head">
+                <strong id="import-backup-progress-label">Uploading backup archive...</strong>
+                <span id="import-backup-progress-percent">0%</span>
+              </div>
+              <progress id="import-backup-progress" max="100" value="0"></progress>
+            </div>
+            <div id="import-backup-validation" class="maintenance-validation-list">
+              <div class="maintenance-validation-empty">No validation results yet.</div>
+            </div>
+            <div class="maintenance-subpanel-head maintenance-subpanel-head--tight">
+
+            </div>
+            <div id="import-backup-comparison" class="maintenance-compare-grid">
+              <div class="maintenance-compare-card">
+                <span>Schema</span>
+                <strong>Inspect a backup to compare schemas.</strong>
+              </div>
+              <div class="maintenance-compare-card">
+                <span>Database ID</span>
+                <strong>Inspect a backup to compare database IDs.</strong>
+              </div>
+            </div>
+            <div class="maintenance-subpanel-head maintenance-subpanel-head--tight">
+              <div>
+                <h3 id="import-backup-detail-title">Import Preview</h3>
+                <p id="import-backup-detail-subtitle">Preview metadata will appear after inspection.</p>
+              </div>
+            </div>
+            <div id="import-backup-detail-grid" class="maintenance-detail-grid"></div>
+            <div id="import-backup-component-summary" class="maintenance-inline-list"></div>
+            <div class="maintenance-subpanel-head maintenance-subpanel-head--tight">
+              <div>
+                <h3>Auctions in Uploaded Backup</h3>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="maintenance-data-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>URL Tag</th>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>Items</th>
+                  </tr>
+                </thead>
+                <tbody id="import-backup-auction-table-body">
+                  <tr><td colspan="5">No backup inspected yet.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="maintenance-actions-row modal-actions-row">
+            <button id="inspect-imported-backup" type="button">Inspect Backup</button>
+            <button id="confirm-import-backup" type="button" disabled>Import Backup</button>
+            <button id="cancel-import-backup" type="button" class="app-modal-close">Close</button>
           </div>
         </div>
       </div>

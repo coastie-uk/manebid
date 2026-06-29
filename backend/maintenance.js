@@ -14,12 +14,11 @@ const { exec } = require("child_process");
 const JSZip = require("jszip");
 const Database = require("better-sqlite3");
 const router = express.Router();
-const { CONFIG_IMG_DIR, SAMPLE_DIR, UPLOAD_DIR, DB_PATH, DB_NAME, BACKUP_DIR, MAX_UPLOADS, allowedExtensions, MAX_AUCTIONS, PPTX_CONFIG_DIR, LOG_DIR, LOG_NAME, PASSWORD_MIN_LENGTH, SERVICE_NAME } = require('./config');
+const { CONFIG_IMG_DIR, SAMPLE_DIR, UPLOAD_DIR, DB_PATH, DB_NAME, BACKUP_DIR, MAX_UPLOADS, allowedExtensions, MAX_AUCTIONS, MAX_ITEMS, PPTX_CONFIG_DIR, LOG_DIR, LOG_NAME, OUTPUT_DIR, PASSWORD_MIN_LENGTH, SERVICE_NAME, MESSAGING_PERSISTENCE_FILE } = require('./config');
 const crypto = require('crypto');
 const { validateJsonPaths } = require('./middleware/json-path-validator');
 const { validateAndNormalizeSlipConfig } = require('./slip-config');
 const { sanitiseText } = require('./middleware/sanitiseText');
-const upload = multer({ dest: UPLOAD_DIR });
 const sharp = require("sharp");
 const QRCode = require("qrcode");
 const db = require('./db');
@@ -70,6 +69,10 @@ const MANAGED_BACKUP_FORMAT_VERSION = 1;
 const MANAGED_BACKUP_PREFIX = "managed_backup_";
 const MANAGED_BACKUP_SUFFIX = ".zip";
 const MANAGED_BACKUP_METADATA_SUFFIX = ".metadata.json";
+const MANAGED_BACKUP_IMPORT_PREFIX = "managed_import_";
+const MANAGED_BACKUP_IMPORT_STAGE_DIR = path.join(BACKUP_DIR, ".managed-imports");
+const MANAGED_BACKUP_IMPORT_METADATA_SUFFIX = ".json";
+const MANAGED_BACKUP_IMPORT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const BACKUP_NOTE_MAX_LENGTH = 500;
 const SQLITE_SIGNATURE = Buffer.from("SQLite format 3\u0000", "utf8");
 const RESOURCE_CONFIG_BACKUP_PATHS = Object.freeze([
@@ -77,6 +80,9 @@ const RESOURCE_CONFIG_BACKUP_PATHS = Object.freeze([
   { key: "card", filename: "cardConfig.json", livePath: CONFIG_PATHS.card },
   { key: "slip", filename: "slipConfig.json", livePath: CONFIG_PATHS.slip }
 ]);
+fs.mkdirSync(MANAGED_BACKUP_IMPORT_STAGE_DIR, { recursive: true });
+const upload = multer({ dest: UPLOAD_DIR });
+const backupImportUpload = multer({ dest: MANAGED_BACKUP_IMPORT_STAGE_DIR });
 
 function ensureDirectory(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
@@ -192,6 +198,104 @@ function createManagedBackupSidecarPath(backupId) {
   };
 }
 
+function parseSchemaVersion(version) {
+  const match = String(version || "").trim().match(/^(\d+)\.(\d+)$/);
+  if (!match) {
+    return null;
+  }
+  return {
+    raw: String(version).trim(),
+    major: Number(match[1]),
+    minor: Number(match[2])
+  };
+}
+
+function compareSchemaMajor(left, right) {
+  const a = parseSchemaVersion(left);
+  const b = parseSchemaVersion(right);
+  if (!a || !b) {
+    return null;
+  }
+  return a.major - b.major;
+}
+
+function createManagedImportToken() {
+  return crypto.randomBytes(16).toString("hex");
+}
+
+function normaliseManagedImportToken(value) {
+  const text = String(value || "").trim();
+  if (!/^[a-f0-9]{32}$/i.test(text)) {
+    throw new Error("Invalid import token.");
+  }
+  return text.toLowerCase();
+}
+
+function createManagedImportPaths(importToken, originalFilename = "backup.zip") {
+  const token = normaliseManagedImportToken(importToken);
+  const safeOriginalFilename = sanitiseText(path.basename(originalFilename || "backup.zip"), 255).trim() || "backup.zip";
+  const zipFilename = `${MANAGED_BACKUP_IMPORT_PREFIX}${token}${path.extname(safeOriginalFilename).toLowerCase() === ".zip" ? ".zip" : ".upload"}`;
+  const metadataFilename = `${MANAGED_BACKUP_IMPORT_PREFIX}${token}${MANAGED_BACKUP_IMPORT_METADATA_SUFFIX}`;
+  return {
+    zipFilename,
+    zipPath: path.join(MANAGED_BACKUP_IMPORT_STAGE_DIR, zipFilename),
+    metadataFilename,
+    metadataPath: path.join(MANAGED_BACKUP_IMPORT_STAGE_DIR, metadataFilename)
+  };
+}
+
+function cleanupExpiredManagedBackupImports() {
+  if (!fs.existsSync(MANAGED_BACKUP_IMPORT_STAGE_DIR)) {
+    return;
+  }
+
+  const cutoff = Date.now() - MANAGED_BACKUP_IMPORT_MAX_AGE_MS;
+  for (const entry of fs.readdirSync(MANAGED_BACKUP_IMPORT_STAGE_DIR)) {
+    if (!entry.startsWith(MANAGED_BACKUP_IMPORT_PREFIX)) {
+      continue;
+    }
+    const fullPath = path.join(MANAGED_BACKUP_IMPORT_STAGE_DIR, entry);
+    try {
+      const stats = fs.statSync(fullPath);
+      if (stats.mtimeMs < cutoff) {
+        fs.rmSync(fullPath, { recursive: true, force: true });
+      }
+    } catch (_error) {
+      fs.rmSync(fullPath, { recursive: true, force: true });
+    }
+  }
+}
+
+function deleteManagedImportRecord(record) {
+  if (!record) return;
+  fs.rmSync(record.zip_path, { force: true });
+  fs.rmSync(record.metadata_path, { force: true });
+}
+
+function readManagedImportRecord(importToken) {
+  cleanupExpiredManagedBackupImports();
+  const token = normaliseManagedImportToken(importToken);
+  const { metadataPath, zipPath } = createManagedImportPaths(token);
+  if (!fs.existsSync(metadataPath) || !fs.existsSync(zipPath)) {
+    return null;
+  }
+
+  const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+  if (String(metadata.import_token || "") !== token) {
+    throw new Error("Import metadata token mismatch.");
+  }
+  if (Date.now() - new Date(metadata.created_at || 0).getTime() > MANAGED_BACKUP_IMPORT_MAX_AGE_MS) {
+    deleteManagedImportRecord({ metadata_path: metadataPath, zip_path: zipPath });
+    return null;
+  }
+
+  return {
+    ...metadata,
+    metadata_path: metadataPath,
+    zip_path: zipPath
+  };
+}
+
 function createOperationLog() {
   const lines = [];
 
@@ -253,6 +357,178 @@ function listManagedResourceImages() {
   return listFilesRecursively(CONFIG_IMG_DIR).filter((file) =>
     allowedExtensions.includes(path.extname(file.relativePath).toLowerCase())
   );
+}
+
+function getNearestExistingPath(targetPath) {
+  let current = path.resolve(targetPath);
+  while (!fs.existsSync(current)) {
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return null;
+    }
+    current = parent;
+  }
+  return current;
+}
+
+function getMountSpace(targetPath) {
+  const nearestPath = getNearestExistingPath(targetPath);
+  if (!nearestPath || typeof fs.statfsSync !== "function") {
+    return {
+      free_bytes: null,
+      capacity_bytes: null,
+      mount_device: null,
+      mount_checked_path: nearestPath
+    };
+  }
+
+  const fsStats = fs.statfsSync(nearestPath);
+  const pathStats = fs.statSync(nearestPath);
+  return {
+    free_bytes: Number(fsStats.bavail) * Number(fsStats.bsize),
+    capacity_bytes: Number(fsStats.blocks) * Number(fsStats.bsize),
+    mount_device: pathStats.dev,
+    mount_checked_path: nearestPath
+  };
+}
+
+function getFileSize(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return 0;
+  }
+  const stats = fs.statSync(filePath);
+  return stats.isFile() ? stats.size : 0;
+}
+
+function pathMatchesOrContains(parentPath, childPath) {
+  const parent = path.resolve(parentPath);
+  const child = path.resolve(childPath);
+  return child === parent || child.startsWith(`${parent}${path.sep}`);
+}
+
+function getDirectorySize(dirPath, excludePaths = []) {
+  const resolvedExcludes = excludePaths.map((excludePath) => path.resolve(excludePath));
+  return listFilesRecursively(dirPath)
+    .filter((file) => !resolvedExcludes.some((excludePath) => pathMatchesOrContains(excludePath, file.absolutePath)))
+    .reduce((sum, file) => sum + file.size_bytes, 0);
+}
+
+function getFileGroupSize(filePaths = []) {
+  return filePaths.reduce((sum, filePath) => sum + getFileSize(filePath), 0);
+}
+
+function getStorageEntry({ key, label, targetPath, targetType, filePaths = [], excludePaths = [] }) {
+  const resolvedPath = path.resolve(targetPath);
+  const entry = {
+    key,
+    label,
+    path: resolvedPath,
+    type: targetType,
+    exists: fs.existsSync(resolvedPath),
+    occupied_bytes: 0,
+    free_bytes: null,
+    capacity_bytes: null,
+    mount_device: null,
+    error: null
+  };
+
+  try {
+    if (targetType === "file") {
+      entry.occupied_bytes = getFileSize(resolvedPath);
+    } else if (targetType === "files") {
+      entry.occupied_bytes = getFileGroupSize(filePaths);
+      entry.exists = filePaths.some((filePath) => fs.existsSync(filePath));
+    } else {
+      entry.occupied_bytes = getDirectorySize(resolvedPath, excludePaths);
+    }
+  } catch (err) {
+    entry.error = err.message;
+  }
+
+  try {
+    const mountTarget = targetType === "file" ? path.dirname(resolvedPath) : resolvedPath;
+    Object.assign(entry, getMountSpace(mountTarget));
+  } catch (err) {
+    entry.error = entry.error || err.message;
+  }
+
+  return entry;
+}
+
+function getDirectResourceImageCount() {
+  if (!fs.existsSync(CONFIG_IMG_DIR)) {
+    return 0;
+  }
+  return fs.readdirSync(CONFIG_IMG_DIR).filter((filename) =>
+    allowedExtensions.includes(path.extname(filename).toLowerCase())
+  ).length;
+}
+
+function getStorageReport() {
+  const applicationPath = path.resolve(__dirname, "..");
+  const databasePath = path.join(DB_PATH, DB_NAME);
+  const pptxConfigPaths = Object.values(CONFIG_PATHS);
+  const applicationExcludePaths = [
+    databasePath,
+    CONFIG_IMG_DIR,
+    UPLOAD_DIR,
+    BACKUP_DIR,
+    ...pptxConfigPaths,
+    OUTPUT_DIR,
+    LOG_DIR,
+    MESSAGING_PERSISTENCE_FILE
+  ].filter((configuredPath) => pathMatchesOrContains(applicationPath, configuredPath));
+  const categoryDefinitions = [
+    { key: "application", label: "Application", targetPath: applicationPath, targetType: "directory", excludePaths: applicationExcludePaths },
+    { key: "database", label: "Database", targetPath: databasePath, targetType: "file" },
+    { key: "resources", label: "Resources", targetPath: CONFIG_IMG_DIR, targetType: "directory" },
+    { key: "images", label: "Images", targetPath: UPLOAD_DIR, targetType: "directory" },
+    { key: "backups", label: "Backups", targetPath: BACKUP_DIR, targetType: "directory" },
+    { key: "pptx_configs", label: "PPTX configs", targetPath: PPTX_CONFIG_DIR, targetType: "files", filePaths: pptxConfigPaths },
+    { key: "output", label: "Output directory", targetPath: OUTPUT_DIR, targetType: "directory" },
+    { key: "logs", label: "Logs", targetPath: LOG_DIR, targetType: "directory" },
+    { key: "messaging_persistence", label: "Messaging persistence file", targetPath: MESSAGING_PERSISTENCE_FILE, targetType: "file" }
+  ];
+  const categories = categoryDefinitions.map(getStorageEntry);
+  const uniqueMounts = new Map();
+
+  for (const category of categories) {
+    if (category.mount_device != null && !uniqueMounts.has(category.mount_device)) {
+      uniqueMounts.set(category.mount_device, {
+        free_bytes: category.free_bytes,
+        capacity_bytes: category.capacity_bytes
+      });
+    }
+  }
+
+  const photoFiles = listFilesRecursively(UPLOAD_DIR);
+  const totals = {
+    occupied_bytes: categories.reduce((sum, category) => sum + Number(category.occupied_bytes || 0), 0),
+    free_bytes: Array.from(uniqueMounts.values()).reduce((sum, mount) => sum + Number(mount.free_bytes || 0), 0),
+    capacity_bytes: Array.from(uniqueMounts.values()).reduce((sum, mount) => sum + Number(mount.capacity_bytes || 0), 0),
+    unique_mount_count: uniqueMounts.size
+  };
+
+  return {
+    count: photoFiles.length,
+    totalSize: photoFiles.reduce((sum, file) => sum + file.size_bytes, 0),
+    categories,
+    totals,
+    counts: {
+      auctions: {
+        count: db.prepare("SELECT COUNT(*) AS count FROM auctions").get().count,
+        limit: MAX_AUCTIONS
+      },
+      items: {
+        count: db.prepare("SELECT COUNT(*) AS count FROM items").get().count,
+        limit: MAX_ITEMS
+      },
+      resources: {
+        count: getDirectResourceImageCount(),
+        limit: MAX_UPLOADS
+      }
+    }
+  };
 }
 
 function safeResolveWithin(baseDir, relativePath) {
@@ -372,7 +648,7 @@ function createSafeDatabaseSnapshot(destinationPath) {
   }
 }
 
-function validateSqliteSnapshot(filePath, { expectedSchemaVersion = String(db.schemaVersion) } = {}) {
+function validateSqliteFileSignature(filePath) {
   const fd = fs.openSync(filePath, "r");
   try {
     const buffer = Buffer.alloc(SQLITE_SIGNATURE.length);
@@ -383,7 +659,38 @@ function validateSqliteSnapshot(filePath, { expectedSchemaVersion = String(db.sc
   } finally {
     fs.closeSync(fd);
   }
+}
 
+function validateSqliteSnapshot(filePath, {
+  expectedSchemaVersion = String(db.schemaVersion),
+  allowSameMajor = false
+} = {}) {
+  validateSqliteFileSignature(filePath);
+
+  const snapshotMetadata = readSqliteSnapshotMetadata(filePath);
+  const importedSchema = String(snapshotMetadata.schemaVersion);
+  const requiredSchema = String(expectedSchemaVersion);
+
+  if (allowSameMajor) {
+    const majorComparison = compareSchemaMajor(importedSchema, requiredSchema);
+    if (majorComparison == null) {
+      throw new Error(`Uploaded database schema version is invalid. (import=${importedSchema}, required=${requiredSchema})`);
+    }
+    if (majorComparison !== 0) {
+      throw new Error(`Uploaded database schema major version does not match. (import=${importedSchema}, required=${requiredSchema})`);
+    }
+  } else if (importedSchema !== requiredSchema) {
+    throw new Error(`Uploaded database schema version does not match. (import=${importedSchema}, required=${requiredSchema})`);
+  }
+
+  return {
+    schemaVersion: importedSchema,
+    exactSchemaMatch: importedSchema === requiredSchema
+  };
+}
+
+function readSqliteSnapshotMetadata(filePath) {
+  validateSqliteFileSignature(filePath);
   const testDb = new Database(filePath, { readonly: true });
   try {
     const metadataTable = testDb.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'metadata'").get();
@@ -397,11 +704,12 @@ function validateSqliteSnapshot(filePath, { expectedSchemaVersion = String(db.sc
       throw new Error("Uploaded database is missing schema version.");
     }
 
-    if (schemaVersion !== String(expectedSchemaVersion)) {
-      throw new Error(`Uploaded database schema version does not match. (import=${schemaVersion}, required=${expectedSchemaVersion})`);
-    }
+    const databaseIdRow = testDb.prepare("SELECT value FROM metadata WHERE data = 'database_id'").get();
+    const databaseId = databaseIdRow && databaseIdRow.value != null && String(databaseIdRow.value).length > 0
+      ? String(databaseIdRow.value)
+      : null;
 
-    return { schemaVersion };
+    return { schemaVersion, databaseId };
   } finally {
     testDb.close();
   }
@@ -441,6 +749,18 @@ function validateManagedBackupMetadata(metadata) {
   if (!metadata.backup_id) {
     throw new Error("Backup metadata is missing backup_id.");
   }
+  if (!metadata.created_at) {
+    throw new Error("Backup metadata is missing created_at.");
+  }
+  if (!metadata.schema_version) {
+    throw new Error("Backup metadata is missing schema_version.");
+  }
+  if (!metadata.component_manifest || typeof metadata.component_manifest !== "object") {
+    throw new Error("Backup metadata is missing component_manifest.");
+  }
+  if (!Array.isArray(metadata.auctions)) {
+    throw new Error("Backup metadata is missing auction metadata.");
+  }
   return metadata;
 }
 
@@ -465,6 +785,11 @@ function readManagedBackupRecord(backupId) {
 
   return {
     ...parsed,
+    archive_backup_id: parsed.archive_backup_id || parsed.backup_id,
+    is_imported: Boolean(parsed.is_imported),
+    imported_at: parsed.imported_at || null,
+    imported_by: parsed.imported_by || null,
+    import_source_filename: parsed.import_source_filename || null,
     archive_size_bytes: archiveStats.size,
     archive_path: archivePath,
     sidecar_path: sidecarPath
@@ -502,6 +827,7 @@ function listManagedBackups() {
 function publicManagedBackupSummary(record) {
   return {
     backup_id: record.backup_id,
+    archive_backup_id: record.archive_backup_id || record.backup_id,
     filename: record.archive_filename,
     created_at: record.created_at,
     created_by: record.created_by,
@@ -511,6 +837,10 @@ function publicManagedBackupSummary(record) {
     restored_from_backup_id: record.restored_from_backup_id || null,
     restored_from_database_id: record.restored_from_database_id || null,
     schema_version: record.schema_version,
+    is_imported: Boolean(record.is_imported),
+    imported_at: record.imported_at || null,
+    imported_by: record.imported_by || null,
+    import_source_filename: record.import_source_filename || null,
     archive_size_bytes: Number(record.archive_size_bytes || 0),
     component_manifest: record.component_manifest || {},
     auction_count: Number(record.summary_counts?.auction_count || 0),
@@ -522,8 +852,203 @@ function publicManagedBackupDetail(record) {
   const { archive_path, sidecar_path, ...rest } = record;
   return {
     ...rest,
+    archive_backup_id: rest.archive_backup_id || rest.backup_id,
+    filename: rest.archive_filename,
     archive_size_bytes: Number(record.archive_size_bytes || 0)
   };
+}
+
+function isAllowedManagedBackupArchiveEntry(name) {
+  if (name === "metadata.json" || name === "backup.log" || name === "database/auction.db") {
+    return true;
+  }
+  if (name === "resources/config/pptxConfig.json" || name === "resources/config/cardConfig.json" || name === "resources/config/slipConfig.json") {
+    return true;
+  }
+  return name.startsWith("photos/") || name.startsWith("resources/images/");
+}
+
+function validateManagedBackupArchiveEntryName(name) {
+  const entryName = String(name || "");
+  if (!entryName || entryName.startsWith("/") || entryName.includes("\\")) {
+    throw new Error(`Invalid archive entry path: ${entryName || "(empty)"}`);
+  }
+  const normalised = path.posix.normalize(entryName);
+  if (normalised !== entryName || normalised === ".." || normalised.startsWith("../")) {
+    throw new Error(`Invalid archive entry path: ${entryName}`);
+  }
+  if (!isAllowedManagedBackupArchiveEntry(entryName)) {
+    throw new Error(`Unexpected archive entry: ${entryName}`);
+  }
+  if (entryName.startsWith("photos/") || entryName.startsWith("resources/images/")) {
+    const ext = path.extname(entryName).toLowerCase();
+    if (!allowedExtensions.includes(ext)) {
+      throw new Error(`Unexpected file type in archive: ${entryName}`);
+    }
+  }
+}
+
+async function inspectManagedBackupArchive(zipPath) {
+  const tempRoot = fs.mkdtempSync(path.join(MANAGED_BACKUP_IMPORT_STAGE_DIR, "inspect-"));
+  try {
+    const zip = await JSZip.loadAsync(fs.readFileSync(zipPath));
+    const metadataEntry = zip.file("metadata.json");
+    if (!metadataEntry) {
+      throw new Error("Backup archive is missing metadata.json.");
+    }
+
+    const metadata = validateManagedBackupMetadata(JSON.parse(await metadataEntry.async("string")));
+    const warnings = [];
+    const blockingErrors = [];
+    const fileEntries = Object.values(zip.files).filter((entry) => !entry.dir);
+    const photos = [];
+    const resourceImages = [];
+    const resourceConfigs = new Set();
+    let hasDatabaseSnapshot = false;
+
+    for (const entry of fileEntries) {
+      validateManagedBackupArchiveEntryName(entry.name);
+      if (entry.name === "database/auction.db") {
+        hasDatabaseSnapshot = true;
+      } else if (entry.name.startsWith("photos/")) {
+        photos.push(entry.name);
+      } else if (entry.name.startsWith("resources/images/")) {
+        resourceImages.push(entry.name);
+      } else if (entry.name.startsWith("resources/config/")) {
+        resourceConfigs.add(path.posix.basename(entry.name));
+      }
+    }
+
+    const manifest = metadata.component_manifest || {};
+    const manifestDatabaseIncluded = Boolean(manifest.database?.included);
+    const manifestPhotosIncluded = Boolean(manifest.photos?.included);
+    const manifestResourcesIncluded = Boolean(manifest.resources?.included);
+    const expectedConfigFiles = RESOURCE_CONFIG_BACKUP_PATHS.map((entry) => entry.filename);
+
+    if (manifestDatabaseIncluded && !hasDatabaseSnapshot) {
+      blockingErrors.push("Backup manifest includes a database snapshot but the archive is missing database/auction.db.");
+    }
+    if (!manifestDatabaseIncluded && hasDatabaseSnapshot) {
+      blockingErrors.push("Backup archive contains a database snapshot that is not declared in metadata.json.");
+    }
+    if ((manifest.photos?.file_count ?? 0) !== photos.length) {
+      blockingErrors.push(`Photo count mismatch between metadata.json (${manifest.photos?.file_count ?? 0}) and archive (${photos.length}).`);
+    }
+    if (!manifestPhotosIncluded && photos.length > 0) {
+      blockingErrors.push("Backup archive contains photos that are not declared in metadata.json.");
+    }
+    if (!manifestPhotosIncluded && Number(manifest.photos?.file_count || 0) !== 0) {
+      blockingErrors.push("Backup metadata.json declares photo files but marks photos as not included.");
+    }
+    if (!manifestResourcesIncluded && (resourceImages.length > 0 || resourceConfigs.size > 0)) {
+      blockingErrors.push("Backup archive contains resources/config files that are not declared in metadata.json.");
+    }
+    if ((manifest.resources?.image_count ?? 0) !== resourceImages.length) {
+      blockingErrors.push(`Resource image count mismatch between metadata.json (${manifest.resources?.image_count ?? 0}) and archive (${resourceImages.length}).`);
+    }
+    if (manifestResourcesIncluded) {
+      for (const configFilename of expectedConfigFiles) {
+        if (!resourceConfigs.has(configFilename)) {
+          blockingErrors.push(`Backup archive is missing ${configFilename}.`);
+        }
+      }
+      const manifestConfigFiles = Array.isArray(manifest.resources?.config_files)
+        ? manifest.resources.config_files.map((entry) => entry.filename)
+        : [];
+      for (const configFilename of expectedConfigFiles) {
+        if (!manifestConfigFiles.includes(configFilename)) {
+          blockingErrors.push(`Backup metadata.json is missing ${configFilename} in the resource config manifest.`);
+        }
+      }
+    }
+
+    const preview = {
+      ...metadata,
+      archive_backup_id: String(metadata.backup_id),
+      filename: metadata.archive_filename || path.basename(zipPath),
+      archive_size_bytes: fs.statSync(zipPath).size,
+      database_id: metadata.database_id || null,
+      snapshot_schema_version: null,
+      snapshot_database_id: null,
+      is_imported: true,
+      imported_at: null,
+      imported_by: null,
+      import_source_filename: null
+    };
+
+    let snapshotInfo = null;
+    if (hasDatabaseSnapshot) {
+      const stagedDbPath = path.join(tempRoot, DB_NAME);
+      fs.writeFileSync(stagedDbPath, await zip.file("database/auction.db").async("nodebuffer"));
+      snapshotInfo = readSqliteSnapshotMetadata(stagedDbPath);
+      preview.snapshot_schema_version = snapshotInfo.schemaVersion || null;
+      preview.snapshot_database_id = snapshotInfo.databaseId || null;
+      if (String(snapshotInfo.schemaVersion) !== String(metadata.schema_version)) {
+        const manifestSchemaMajorComparison = compareSchemaMajor(snapshotInfo.schemaVersion, metadata.schema_version);
+        if (manifestSchemaMajorComparison == null) {
+          blockingErrors.push(`Database snapshot schema (${snapshotInfo.schemaVersion}) is not compatible with metadata.json schema (${metadata.schema_version}).`);
+        } else if (manifestSchemaMajorComparison !== 0) {
+          blockingErrors.push(`Database snapshot schema major version (${snapshotInfo.schemaVersion}) does not match metadata.json schema (${metadata.schema_version}).`);
+        } else {
+          warnings.push(`Database snapshot schema (${snapshotInfo.schemaVersion}) differs from metadata.json schema (${metadata.schema_version}), but the major version matches.`);
+        }
+      }
+      if (metadata.database_id && snapshotInfo.databaseId && String(metadata.database_id) !== String(snapshotInfo.databaseId)) {
+        warnings.push(`Database snapshot ID (${snapshotInfo.databaseId}) differs from metadata.json database ID (${metadata.database_id}).`);
+      }
+    }
+
+    const liveSchema = String(db.schemaVersion);
+    const liveDatabaseId = db.getMetadataValue("database_id") || null;
+    const schemaComparison = {
+      imported: String(metadata.schema_version || ""),
+      live: liveSchema,
+      status: "match",
+      message: "Schema matches the live server."
+    };
+    const schemaMajorComparison = compareSchemaMajor(schemaComparison.imported, liveSchema);
+    if (schemaMajorComparison == null) {
+      blockingErrors.push("Unable to compare imported schema version with the live server.");
+      schemaComparison.status = "blocked";
+      schemaComparison.message = "Imported schema version is not in the expected major.minor format.";
+    } else if (schemaMajorComparison !== 0) {
+      blockingErrors.push(`Imported schema major version (${schemaComparison.imported}) does not match the live server schema (${liveSchema}).`);
+      schemaComparison.status = "blocked";
+      schemaComparison.message = "Schema major version differs from the live server. Import is blocked.";
+    } else if (schemaComparison.imported !== liveSchema) {
+      warnings.push(`Imported schema version ${schemaComparison.imported} differs from live server schema ${liveSchema}.`);
+      schemaComparison.status = "warning";
+      schemaComparison.message = "Schema major version matches, but the exact schema version differs.";
+    }
+
+    const databaseComparison = {
+      imported: metadata.database_id || null,
+      live: liveDatabaseId,
+      status: "match",
+      message: "Database ID matches the live server."
+    };
+    if (preview.database_id && liveDatabaseId && String(preview.database_id) !== String(liveDatabaseId)) {
+      warnings.push(`Imported database ID ${preview.database_id} differs from live server database ID ${liveDatabaseId}.`);
+      databaseComparison.status = "warning";
+      databaseComparison.message = "Database ID differs from the live server.";
+    } else if (!preview.database_id || !liveDatabaseId) {
+      databaseComparison.status = "info";
+      databaseComparison.message = "Database ID comparison is incomplete because one side is missing.";
+    }
+
+    return {
+      preview,
+      warnings,
+      blocking_errors: blockingErrors,
+      can_import: blockingErrors.length === 0,
+      comparison: {
+        schema: schemaComparison,
+        database: databaseComparison
+      }
+    };
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
 }
 
 function captureCurrentRootPasswordHash() {
@@ -811,6 +1336,7 @@ router.post("/backup", async (req, res) => {
     const metadata = {
       format_version: MANAGED_BACKUP_FORMAT_VERSION,
       backup_id: backupId,
+      archive_backup_id: backupId,
       archive_filename: archiveFilename,
       created_at: createdAt,
       created_by: createdBy,
@@ -820,6 +1346,10 @@ router.post("/backup", async (req, res) => {
       restored_from_backup_id: restoredFromBackupId,
       restored_from_database_id: restoredFromDatabaseId,
       note,
+      is_imported: false,
+      imported_at: null,
+      imported_by: null,
+      import_source_filename: null,
       backup_log_included: true,
       component_manifest: {
         database: {
@@ -980,96 +1510,102 @@ router.delete("/backups/:backupId", (req, res) => {
   }
 });
 
-//--------------------------------------------------------------------------
-// GET /download-db
-// API to download full DB
-//--------------------------------------------------------------------------
-
-router.get("/download-db", (req, res) => {
-  const now = new Date();
-  const timestamp = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const ext = path.extname(DB_NAME);
-  const base = path.basename(DB_NAME, ext);
-  const filename = `${base}_${timestamp}${ext}`;
-  const databaseFile = path.join(DB_PATH, DB_NAME);
-  const tempSnapshotPath = path.join(BACKUP_DIR, `${base}_download_${Date.now()}${ext}`);
-
-  db.setMaintenanceLock(true);
+router.post("/backups/import/inspect", async (req, res) => {
+  let uploadedFilePath = null;
+  let importToken = null;
   try {
-    db.close();
-    fs.copyFileSync(databaseFile, tempSnapshotPath);
-    if (typeof db.reopen === "function") {
-      db.reopen({ skipClose: true });
+    cleanupExpiredManagedBackupImports();
+    await awaitMiddleware(backupImportUpload.single("backup"))(req, res);
+
+    if (!req.file?.path) {
+      return res.status(400).json({ error: "No backup zip uploaded." });
     }
-  } finally {
-    db.setMaintenanceLock(false);
+
+    uploadedFilePath = req.file.path;
+    importToken = createManagedImportToken();
+    const importPaths = createManagedImportPaths(importToken, req.file.originalname || "managed-backup.zip");
+    fs.renameSync(uploadedFilePath, importPaths.zipPath);
+    uploadedFilePath = null;
+
+    const inspection = await inspectManagedBackupArchive(importPaths.zipPath);
+    inspection.preview.import_source_filename = req.file.originalname || path.basename(importPaths.zipPath);
+    const stagedRecord = {
+      import_token: importToken,
+      created_at: new Date().toISOString(),
+      original_filename: req.file.originalname || path.basename(importPaths.zipPath),
+      ...inspection
+    };
+    fs.writeFileSync(importPaths.metadataPath, JSON.stringify(stagedRecord, null, 2), "utf8");
+
+    return res.json({
+      message: "Backup import preview ready.",
+      import_token: importToken,
+      ...inspection
+    });
+  } catch (err) {
+    if (uploadedFilePath) {
+      fs.rmSync(uploadedFilePath, { force: true });
+    }
+    if (importToken) {
+      const importPaths = createManagedImportPaths(importToken);
+      fs.rmSync(importPaths.zipPath, { force: true });
+      fs.rmSync(importPaths.metadataPath, { force: true });
+    }
+    logFromRequest(req, logLevels.ERROR, `Managed backup import inspect failed: ${err.message}`);
+    return res.status(400).json({ error: err.message || "Failed to inspect backup archive." });
   }
-
-  res.download(tempSnapshotPath, filename, (err) => {
-    try {
-      fs.rmSync(tempSnapshotPath, { force: true });
-    } catch (_) {
-      // Ignore cleanup errors for temp snapshot files.
-    }
-    if (err && !res.headersSent) {
-      res.status(500).json({ error: "Failed to download database snapshot." });
-    }
-  });
-
 });
 
-//--------------------------------------------------------------------------
-// POST /restore
-// API to restore full DB from an uploaded copy
-//--------------------------------------------------------------------------
-
-router.post("/restore", async (req, res) => {
+router.post("/backups/import/confirm", async (req, res) => {
+  let archivePath = null;
+  let sidecarPath = null;
   try {
-    await awaitMiddleware(upload.single("backup"))(req, res);
-
-    if (!req.file || !req.file.path) {
-      return res.status(400).json({ error: "No file uploaded." });
+    const stagedImport = readManagedImportRecord(req.body?.import_token);
+    if (!stagedImport) {
+      return res.status(404).json({ error: "Import preview not found or has expired." });
+    }
+    if (!stagedImport.can_import || (Array.isArray(stagedImport.blocking_errors) && stagedImport.blocking_errors.length > 0)) {
+      return res.status(400).json({ error: "This backup import is blocked. Re-run preview after correcting the archive." });
     }
 
-    const filePath = req.file.path;
+    const backupId = createManagedBackupId();
+    const backupPaths = createManagedBackupPaths(backupId, new Date().toISOString());
+    const archiveFilename = backupPaths.archiveFilename;
+    archivePath = backupPaths.archivePath;
+    sidecarPath = backupPaths.sidecarPath;
+    fs.renameSync(stagedImport.zip_path, archivePath);
 
+    const sourcePreview = validateManagedBackupMetadata(stagedImport.preview);
+    const archiveSize = fs.statSync(archivePath).size;
+    const sidecarMetadata = {
+      ...sourcePreview,
+      backup_id: backupId,
+      archive_backup_id: String(sourcePreview.archive_backup_id || sourcePreview.backup_id),
+      archive_filename: archiveFilename,
+      archive_size_bytes: archiveSize,
+      is_imported: true,
+      imported_at: new Date().toISOString(),
+      imported_by: req.user?.username || "unknown",
+      import_source_filename: stagedImport.original_filename || sourcePreview.import_source_filename || null
+    };
+    fs.writeFileSync(sidecarPath, JSON.stringify(sidecarMetadata, null, 2), "utf8");
+    fs.rmSync(stagedImport.metadata_path, { force: true });
 
-    try {
-      validateSqliteSnapshot(filePath, { expectedSchemaVersion: String(db.schemaVersion) });
-    } catch (ioErr) {
-      fs.unlinkSync(filePath);
-      logFromRequest(req, logLevels.ERROR, `Database restore failed ${ioErr.message}`);
-      return res.status(400).json({ error: ioErr.message || "Unable to read uploaded file." });
-    }
-
-    const dbFilePath = path.join(DB_PATH, DB_NAME);
-    const walPath = `${dbFilePath}-wal`;
-    const shmPath = `${dbFilePath}-shm`;
-    const currentRootPasswordHash = captureCurrentRootPasswordHash();
-
-    db.setMaintenanceLock(true);
-    try {
-      db.close();
-      fs.copyFileSync(filePath, dbFilePath);
-      fs.unlinkSync(filePath);
-      fs.rmSync(walPath, { force: true });
-      fs.rmSync(shmPath, { force: true });
-      if (typeof db.reopen === "function") {
-        db.reopen({ skipClose: true });
-        preserveRootPasswordHash(currentRootPasswordHash);
-        db.setMetadataValue('restored_at', new Date().toISOString());
-        db.setMetadataValue('restored_from_backup_id', 'uploaded-database');
-        db.setMetadataValue('restored_from_database_id', '');
-      }
-    } finally {
-      db.setMaintenanceLock(false);
-    }
-
-    logFromRequest(req, logLevels.INFO, "Database restored");
-    res.json({ message: "Database restored." });
-
+    const importedBackup = readManagedBackupRecord(backupId);
+    logFromRequest(req, logLevels.INFO, `Managed backup imported ${archiveFilename}`);
+    return res.json({
+      message: "Backup imported.",
+      backup: publicManagedBackupDetail(importedBackup)
+    });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    if (archivePath) {
+      fs.rmSync(archivePath, { force: true });
+    }
+    if (sidecarPath) {
+      fs.rmSync(sidecarPath, { force: true });
+    }
+    logFromRequest(req, logLevels.ERROR, `Managed backup import confirm failed: ${err.message}`);
+    return res.status(400).json({ error: err.message || "Failed to import backup archive." });
   }
 });
 
@@ -1104,7 +1640,7 @@ async function restoreManagedBackup(backup, selection, req) {
     }
 
     const archiveMetadata = validateManagedBackupMetadata(JSON.parse(await metadataEntry.async("string")));
-    if (String(archiveMetadata.backup_id) !== String(backup.backup_id)) {
+    if (String(archiveMetadata.backup_id) !== String(backup.archive_backup_id || backup.backup_id)) {
       throw new Error("Backup archive metadata does not match the selected backup.");
     }
 
@@ -1116,8 +1652,14 @@ async function restoreManagedBackup(backup, selection, req) {
 
       ensureDirectory(path.dirname(stagedDbPath));
       fs.writeFileSync(stagedDbPath, await dbEntry.async("nodebuffer"));
-      const validation = validateSqliteSnapshot(stagedDbPath, { expectedSchemaVersion: String(db.schemaVersion) });
+      const validation = validateSqliteSnapshot(stagedDbPath, {
+        expectedSchemaVersion: String(db.schemaVersion),
+        allowSameMajor: true
+      });
       restoreLog.info(`Validated staged database snapshot (schema ${validation.schemaVersion})`);
+      if (!validation.exactSchemaMatch) {
+        restoreLog.warn(`Database schema differs from the live server but shares the same major version. (backup=${validation.schemaVersion}, live=${String(db.schemaVersion)})`);
+      }
     }
 
     if (selection.restorePhotos) {
@@ -1211,7 +1753,10 @@ async function restoreManagedBackup(backup, selection, req) {
           db.setMetadataValue('restored_at', new Date().toISOString());
           db.setMetadataValue('restored_from_backup_id', String(archiveMetadata.backup_id));
           db.setMetadataValue('restored_from_database_id', archiveMetadata.database_id ? String(archiveMetadata.database_id) : '');
-          const liveValidation = validateSqliteSnapshot(liveDbPath, { expectedSchemaVersion: String(db.schemaVersion) });
+          const liveValidation = validateSqliteSnapshot(liveDbPath, {
+            expectedSchemaVersion: String(db.schemaVersion),
+            allowSameMajor: true
+          });
           restoreLog.info(`Reopened restored database successfully (schema ${liveValidation.schemaVersion})`);
           restoreLog.info(`Recorded restore provenance from backup ${archiveMetadata.backup_id}`);
         }
@@ -1631,11 +2176,18 @@ router.get("/export", (req, res) => {
 //--------------------------------------------------------------------------
 
 router.get("/photo-report", (req, res) => {
- // const files = fs.readdirSync("./uploads");
-  const files = fs.readdirSync( UPLOAD_DIR );
-  const totalSize = files.reduce((sum, file) => sum + fs.statSync(path.join(UPLOAD_DIR, file)).size, 0);
-  res.json({ count: files.length, totalSize });
-  logFromRequest(req, logLevels.INFO, `${files.length} photos stored, ${totalSize / 1024 / 1024} occupied`);
+  try {
+    const report = getStorageReport();
+    res.json(report);
+    logFromRequest(
+      req,
+      logLevels.INFO,
+      `${report.count} photos stored, ${report.totalSize / 1024 / 1024} occupied; server storage total ${report.totals.occupied_bytes / 1024 / 1024} MiB`
+    );
+  } catch (err) {
+    logFromRequest(req, logLevels.ERROR, `Storage report failed: ${err.message}`);
+    res.status(500).json({ error: "Storage report failed." });
+  }
 });
 
 //--------------------------------------------------------------------------
@@ -2266,9 +2818,9 @@ function getNextItemNumberAsync(auction_id) {
 // POST /generate-test-data
 // API to generate test items based on sample-items.json
 //--------------------------------------------------------------------------
+"setup", "locked", "live", "settlement", "archived"
 
-
-router.post("/generate-test-data", checkAuctionState(['setup']), async (req, res) => {
+router.post("/generate-test-data", checkAuctionState(['setup', 'locked', 'live', 'settlement']), async (req, res) => {
   const count = parseInt(req.body.count, 10);
   const { auction_id } = req.body;
   if (!count || count < 1 || count > 1000 || !auction_id) {
@@ -3055,7 +3607,7 @@ router.post('/auctions/set-admin-state-permission', async (req, res) => {
 // API to generate random bids. #bidders and #bids are both configurable
 //--------------------------------------------------------------------------
 
-router.post("/generate-bids", checkAuctionState(['live', 'settlement']), (req, res) => {
+router.post("/generate-bids", checkAuctionState(['setup', 'locked', 'live', 'settlement']), (req, res) => {
   const { auction_id, num_bids, num_bidders } = req.body;
 
   if (!auction_id || !Number.isInteger(num_bids) || !Number.isInteger(num_bidders)) {
@@ -3126,7 +3678,7 @@ router.post("/generate-bids", checkAuctionState(['live', 'settlement']), (req, r
 // API to delete all test bids from a specific auction, and prunes unused bidders
 //--------------------------------------------------------------------------
 
-router.post("/delete-test-bids", checkAuctionState(['live', 'settlement']), (req, res) => {
+router.post("/delete-test-bids", checkAuctionState(['setup', 'locked', 'live', 'settlement']), (req, res) => {
   const { auction_id } = req.body;
 
   if (!auction_id) {

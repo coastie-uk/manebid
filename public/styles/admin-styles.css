@@ -1130,6 +1130,12 @@ form button:hover {
     margin: 0 0 10px;
 }
 
+.password-modal-description {
+    color: var(--admin-muted);
+    line-height: 1.45;
+    margin: 0 0 12px;
+}
+
 .password-modal-input {
     background: #fff;
     border: 1px solid #cbd5df;

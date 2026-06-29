@@ -768,13 +768,13 @@ The maintenance area no longer exposes only a raw DB backup model. It now has ma
 Endpoints:
 
 - `POST /api/maintenance/backup`
+- `POST /api/maintenance/backups/import/inspect`
+- `POST /api/maintenance/backups/import/confirm`
 - `GET /api/maintenance/backups`
 - `GET /api/maintenance/backups/:backupId`
 - `GET /api/maintenance/backups/:backupId/download`
 - `DELETE /api/maintenance/backups/:backupId`
 - `POST /api/maintenance/backups/:backupId/restore`
-- `GET /api/maintenance/download-db`
-- `POST /api/maintenance/restore`
 
 Data flow:
 
@@ -789,12 +789,17 @@ Data flow:
   - database
   - photos
   - resources/config
-- uploaded raw DB restore still exists for direct snapshot replacement
+- managed backup import is a two-step inspect/confirm flow
+- imported backups receive a new local server `backup_id`
+- imported backups preserve the source archive `backup_id` as `archive_backup_id`
+- import preview compares imported schema/database metadata against the live server
+- import blocks backups whose schema major version differs from the live server
 - restore provenance is written into `metadata`
 
 Retired route:
 
 - `GET /api/maintenance/download-full` is no longer part of the intended frontend surface
+- raw DB upload/download maintenance endpoints are no longer part of the intended frontend or backend surface
 
 #### 6.2 Import/export, auctions, and state policy
 
@@ -1023,13 +1028,13 @@ Cashier/live feed/settlement:
 Maintenance:
 
 - `POST /api/maintenance/backup`
+- `POST /api/maintenance/backups/import/inspect`
+- `POST /api/maintenance/backups/import/confirm`
 - `GET /api/maintenance/backups`
 - `GET /api/maintenance/backups/:backupId`
 - `GET /api/maintenance/backups/:backupId/download`
 - `DELETE /api/maintenance/backups/:backupId`
 - `POST /api/maintenance/backups/:backupId/restore`
-- `GET /api/maintenance/download-db`
-- `POST /api/maintenance/restore`
 - `GET /api/maintenance/export`
 - `POST /api/maintenance/import`
 - `POST /api/maintenance/reset`

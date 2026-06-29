@@ -23,6 +23,15 @@ const aboutDatabaseCreatedAtEl = document.getElementById("about-database-created
 const aboutDatabaseCreatedByBackendEl = document.getElementById("about-database-created-by-backend");
 const aboutDatabaseRestoreEl = document.getElementById("about-database-restore");
 const aboutBackendUptimeEl = document.getElementById("about-backend-uptime");
+const openAddAuctionModalButton = document.getElementById("open-add-auction-modal");
+const addAuctionModal = document.getElementById("add-auction-modal");
+const closeAddAuctionModalButton = document.getElementById("close-add-auction-modal");
+const cancelAddAuctionButton = document.getElementById("cancel-add-auction");
+const testDataModal = document.getElementById("test-data-modal");
+const closeTestDataModalButton = document.getElementById("close-test-data-modal");
+const cancelTestDataButton = document.getElementById("cancel-test-data");
+const testAuctionName = document.getElementById("test-auction-name");
+const testAuctionState = document.getElementById("test-auction-state");
 const editAuctionModal = document.getElementById("edit-auction-modal");
 const closeEditAuctionModalButton = document.getElementById("close-edit-auction-modal");
 const cancelEditAuctionButton = document.getElementById("cancel-edit-auction");
@@ -58,7 +67,9 @@ const integrityResults = document.getElementById("integrity-results");
 const integritySummaryPanel = document.getElementById("integrity-summary-panel");
 const integrityFixSummary = document.getElementById("integrity-fix-summary");
 const integrityDetailsPanel = document.getElementById("integrity-details-panel");
+const photoStorageResults = document.getElementById("photo-storage-results");
 const openCreateBackupModalButton = document.getElementById("open-create-backup-modal");
+const openImportBackupModalButton = document.getElementById("open-import-backup-modal");
 const openAddUserModalButton = document.getElementById("open-add-user-modal");
 const backupNoteInput = document.getElementById("backup-note");
 const backupOperationStatus = document.getElementById("backup-operation-status");
@@ -85,6 +96,24 @@ const cancelBackupRestoreButton = document.getElementById("cancel-backup-restore
 const createBackupModal = document.getElementById("create-backup-modal");
 const closeCreateBackupModalButton = document.getElementById("close-create-backup-modal");
 const cancelCreateBackupButton = document.getElementById("cancel-create-backup");
+const importBackupModal = document.getElementById("import-backup-modal");
+const closeImportBackupModalButton = document.getElementById("close-import-backup-modal");
+const cancelImportBackupButton = document.getElementById("cancel-import-backup");
+const importBackupFileInput = document.getElementById("import-backup-file");
+const inspectImportedBackupButton = document.getElementById("inspect-imported-backup");
+const confirmImportBackupButton = document.getElementById("confirm-import-backup");
+const importBackupStatus = document.getElementById("import-backup-status");
+const importBackupProgressWrap = document.getElementById("import-backup-progress-wrap");
+const importBackupProgress = document.getElementById("import-backup-progress");
+const importBackupProgressLabel = document.getElementById("import-backup-progress-label");
+const importBackupProgressPercent = document.getElementById("import-backup-progress-percent");
+const importBackupValidation = document.getElementById("import-backup-validation");
+const importBackupComparison = document.getElementById("import-backup-comparison");
+const importBackupDetailTitle = document.getElementById("import-backup-detail-title");
+const importBackupDetailSubtitle = document.getElementById("import-backup-detail-subtitle");
+const importBackupDetailGrid = document.getElementById("import-backup-detail-grid");
+const importBackupComponentSummary = document.getElementById("import-backup-component-summary");
+const importBackupAuctionTableBody = document.getElementById("import-backup-auction-table-body");
 const addUserModal = document.getElementById("add-user-modal");
 const closeAddUserModalButton = document.getElementById("close-add-user-modal");
 const cancelAddUserButton = document.getElementById("cancel-add-user");
@@ -125,11 +154,14 @@ let selectedBackupId = null;
 let selectedBackupDetail = null;
 let lastManagedRestoreLog = "";
 let backupOperationBusy = false;
+let pendingBackupImport = null;
 let resourceImageFiles = [];
 let selectedQrAuction = null;
 let currentQrPreviewUrl = null;
 let auctionContextMenu = null;
 let selectedEditUser = null;
+let selectedTestAuction = null;
+let testDataBusy = false;
 
 const AUCTION_ACTION_ICONS = Object.freeze({
   qr: `
@@ -148,6 +180,15 @@ const AUCTION_ACTION_ICONS = Object.freeze({
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
       <path d="M12 20h9"></path>
       <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+    </svg>
+  `,
+  testData: `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M9 3h6"></path>
+      <path d="M10 3v5l-5.2 9a2.3 2.3 0 0 0 2 3.5h10.4a2.3 2.3 0 0 0 2-3.5L14 8V3"></path>
+      <path d="M7.5 15h9"></path>
+      <path d="M10 12h.01"></path>
+      <path d="M14 17h.01"></path>
     </svg>
   `,
   reset: `
@@ -274,6 +315,19 @@ function formatBytes(bytes) {
   return `${size.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
+function formatNullableBytes(bytes) {
+  return bytes == null ? "Unknown" : formatBytes(bytes);
+}
+
+function formatInteger(value) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? number.toLocaleString() : "0";
+}
+
+function formatCountLimit(count, limit) {
+  return `${formatInteger(count)} / ${formatInteger(limit)}`;
+}
+
 function formatDateTime(value) {
   if (!value) return "Unknown";
   const date = new Date(value);
@@ -336,6 +390,76 @@ function setCreateBackupLog(text) {
   createBackupLog.textContent = text || "No backup log captured yet.";
 }
 
+function setImportBackupStatus(message, type = "info") {
+  if (!importBackupStatus) return;
+  importBackupStatus.textContent = message;
+  importBackupStatus.dataset.state = type;
+}
+
+function setImportBackupProgress({
+  hidden = false,
+  label = "Uploading backup archive...",
+  percent = null
+} = {}) {
+  if (!importBackupProgressWrap || !importBackupProgress || !importBackupProgressLabel || !importBackupProgressPercent) return;
+
+  importBackupProgressWrap.hidden = hidden;
+  if (hidden) {
+    importBackupProgress.removeAttribute("value");
+    importBackupProgressPercent.textContent = "";
+    importBackupProgressLabel.textContent = label;
+    return;
+  }
+
+  importBackupProgressLabel.textContent = label;
+  if (typeof percent === "number" && Number.isFinite(percent)) {
+    const clampedPercent = Math.max(0, Math.min(100, Math.round(percent)));
+    importBackupProgress.value = clampedPercent;
+    importBackupProgressPercent.textContent = `${clampedPercent}%`;
+  } else {
+    importBackupProgress.removeAttribute("value");
+    importBackupProgressPercent.textContent = "Working...";
+  }
+}
+
+function postFormDataWithUploadProgress(url, formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.responseType = "json";
+    xhr.setRequestHeader("Authorization", token);
+
+    xhr.upload.addEventListener("progress", (event) => {
+      if (typeof onProgress === "function") {
+        onProgress(event);
+      }
+    });
+
+    xhr.addEventListener("load", () => {
+      const response = xhr.response && typeof xhr.response === "object"
+        ? xhr.response
+        : (() => {
+            try {
+              return JSON.parse(xhr.responseText || "{}");
+            } catch (error) {
+              return {};
+            }
+          })();
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(response);
+        return;
+      }
+
+      reject(new Error(response.error || "Failed to inspect backup archive."));
+    });
+
+    xhr.addEventListener("error", () => reject(new Error("Backup upload failed.")));
+    xhr.addEventListener("abort", () => reject(new Error("Backup upload was cancelled.")));
+    xhr.send(formData);
+  });
+}
+
 function openModal(modal) {
   if (modal) {
     modal.hidden = false;
@@ -346,6 +470,60 @@ function closeModal(modal) {
   if (modal) {
     modal.hidden = true;
   }
+}
+
+function resetAddAuctionForm() {
+  const fullNameInput = document.getElementById("auction-full-name");
+  const shortNameInput = document.getElementById("auction-short-name");
+  const logoSelect = document.getElementById("auction-logo-select");
+  if (fullNameInput) fullNameInput.value = "";
+  if (shortNameInput) shortNameInput.value = "";
+  if (logoSelect) logoSelect.selectedIndex = 0;
+}
+
+function openAddAuctionModal() {
+  openModal(addAuctionModal);
+  document.getElementById("auction-full-name")?.focus();
+}
+
+function closeAddAuctionModal() {
+  closeModal(addAuctionModal);
+}
+
+function openTestDataModal(auction) {
+  if (!testDataModal || !auction) return;
+  selectedTestAuction = auction;
+  const auctionIdInput = document.getElementById("test-auction-select");
+  if (auctionIdInput) auctionIdInput.value = String(auction.id);
+  if (testAuctionName) {
+    testAuctionName.textContent = auction.full_name || auction.short_name || `Auction ${auction.id}`;
+  }
+  if (testAuctionState) {
+    testAuctionState.textContent = formatAuctionStatus(auction.status);
+  }
+  openModal(testDataModal);
+  document.getElementById("test-count")?.focus();
+}
+
+function closeTestDataModal() {
+  selectedTestAuction = null;
+  const auctionIdInput = document.getElementById("test-auction-select");
+  if (auctionIdInput) auctionIdInput.value = "";
+  closeModal(testDataModal);
+}
+
+function setTestDataBusy(busy) {
+  testDataBusy = busy;
+  ["generate-test-data", "generate-bids-btn", "delete-test-bids"].forEach((id) => {
+    const button = document.getElementById(id);
+    if (button) button.disabled = busy;
+  });
+}
+
+function getSelectedTestAuction() {
+  const auctionId = Number(document.getElementById("test-auction-select")?.value);
+  if (!selectedTestAuction || Number(selectedTestAuction.id) !== auctionId) return null;
+  return selectedTestAuction;
 }
 
 function resetAddUserForm() {
@@ -384,6 +562,145 @@ function createBackupActionButton(icon, title, onClick, { danger = false, disabl
     onClick();
   });
   return button;
+}
+
+function renderBackupAuctionRows(tableBody, auctions) {
+  if (!tableBody) return;
+  if (!Array.isArray(auctions) || auctions.length === 0) {
+    tableBody.innerHTML = '<tr><td colspan="5">No auctions recorded in this backup.</td></tr>';
+    return;
+  }
+
+  tableBody.innerHTML = auctions.map((auction) => `
+    <tr>
+      <td>${escapeHtml(auction.id)}</td>
+      <td>${escapeHtml(auction.short_name)}</td>
+      <td>${escapeHtml(auction.full_name)}</td>
+      <td>${escapeHtml(auction.status)}</td>
+      <td>${escapeHtml(auction.item_count)}${Number(auction.deleted_item_count || 0) > 0 ? ` (${escapeHtml(auction.deleted_item_count)} deleted)` : ""}</td>
+    </tr>
+  `).join("");
+}
+
+function renderBackupDetailSummary(detail, {
+  titleEl,
+  subtitleEl,
+  gridEl,
+  componentEl,
+  auctionTableBody,
+  titlePrefix = "Backup"
+} = {}) {
+  if (!detail) return;
+
+  const auctions = Array.isArray(detail.auctions) ? detail.auctions : [];
+  const resourceConfigCount = Array.isArray(detail.component_manifest?.resources?.config_files)
+    ? detail.component_manifest.resources.config_files.length
+    : 0;
+  const detailTitle = detail.backup_id ? `${titlePrefix} #${detail.backup_id}` : titlePrefix;
+  const detailSubtitle = detail.note
+    ? `Note: ${detail.note}`
+    : `Archive file: ${detail.filename || detail.import_source_filename || "Unknown"}`;
+
+  if (titleEl) titleEl.textContent = detailTitle;
+  if (subtitleEl) subtitleEl.textContent = detailSubtitle;
+  if (gridEl) {
+    gridEl.innerHTML = [
+      ["Backup ID", detail.backup_id ? `#${detail.backup_id}` : "Assigned on import"],
+      ["Source Backup ID", detail.archive_backup_id ? `#${detail.archive_backup_id}` : "Unknown"],
+      ["Created", formatDateTime(detail.created_at)],
+      ["User", detail.created_by || "Unknown"],
+      ["Database ID", detail.database_id || "Unknown"],
+      ["Last Restore", detail.restored_at ? formatRestoreSummary(detail) : "Never"],
+      ["Schema", detail.schema_version || "Unknown"],
+      ["Archive Size", formatBytes(detail.archive_size_bytes)],
+      ["Format", `v${detail.format_version || "?"}`],
+      ["Auctions", `${auctions.length}`],
+      ["Archive", detail.filename || "Unknown"],
+      ["Imported", detail.is_imported ? `Yes${detail.imported_at ? ` on ${formatDateTime(detail.imported_at)}` : ""}` : "No"],
+      ["Imported By", detail.imported_by || "Not applicable"],
+      ["Import Source", detail.import_source_filename || "Not applicable"]
+    ].map(([label, value]) => `
+      <div class="maintenance-detail-stat">
+        <span class="maintenance-detail-label">${escapeHtml(label)}</span>
+        <span class="maintenance-detail-value">${escapeHtml(value)}</span>
+      </div>
+    `).join("");
+  }
+  if (componentEl) {
+    componentEl.innerHTML = [
+      { label: "Database", value: detail.component_manifest?.database?.included ? "Included" : "Missing" },
+      { label: "Photos", value: `${detail.component_manifest?.photos?.file_count ?? 0} file(s)` },
+      { label: "Resources", value: `${detail.component_manifest?.resources?.image_count ?? 0} image(s)` },
+      { label: "Configs", value: `${resourceConfigCount} file(s)` }
+    ].map((entry) => `<span class="maintenance-inline-pill">${escapeHtml(entry.label)}: ${escapeHtml(entry.value)}</span>`).join("");
+  }
+  renderBackupAuctionRows(auctionTableBody, auctions);
+}
+
+function renderImportValidation(result = null) {
+  if (!importBackupValidation) return;
+  const blockingErrors = Array.isArray(result?.blocking_errors) ? result.blocking_errors : [];
+
+  if (blockingErrors.length === 0) {
+    importBackupValidation.hidden = true;
+    importBackupValidation.innerHTML = "";
+    return;
+  }
+
+  importBackupValidation.hidden = false;
+  importBackupValidation.innerHTML = blockingErrors
+    .map((message) => `<div class="maintenance-validation-item is-error"><strong>Blocked:</strong> ${escapeHtml(message)}</div>`)
+    .join("");
+}
+
+function renderImportComparison(result = null) {
+  if (!importBackupComparison) return;
+  const warnings = Array.isArray(result?.warnings) ? result.warnings : [];
+  const schema = { ...(result?.comparison?.schema || {}) };
+  const database = { ...(result?.comparison?.database || {}) };
+  const preview = result?.preview || {};
+  const schemaSnapshotDiff = warnings.some((message) => message.includes("Database snapshot schema"));
+  const databaseSnapshotDiff = warnings.some((message) => message.includes("Database snapshot ID"));
+
+  if ((schema.status === "match" || !schema.status) && schemaSnapshotDiff) {
+    schema.status = "warning";
+    schema.message = "Uploaded backup schema matches the live server.";
+  }
+
+  if ((database.status === "match" || !database.status) && databaseSnapshotDiff) {
+    database.status = "warning";
+    database.message = "Uploaded backup database ID matches the live server.";
+  }
+
+  const renderCard = (label, comparison, extraNote = "") => `
+    <div class="maintenance-compare-card is-${escapeHtml(comparison.status || "info")}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(comparison.message || "No comparison available.")}</strong>
+      <div class="maintenance-compare-values">
+        <span>Import: ${escapeHtml(comparison.imported || "Unknown")}</span>
+        <span>Current Server: ${escapeHtml(comparison.live || "Unknown")}</span>
+      </div>
+    </div>
+  `;
+
+
+  importBackupComparison.innerHTML = `${renderCard("Schema", schema)}${renderCard("Database ID", database)}`;
+}
+
+function resetImportBackupPreview() {
+  pendingBackupImport = null;
+  if (importBackupFileInput) importBackupFileInput.value = "";
+  setImportBackupStatus("Select a managed backup zip to inspect.", "info");
+  setImportBackupProgress({ hidden: true });
+  renderImportValidation(null);
+  renderImportComparison(null);
+  if (importBackupDetailTitle) importBackupDetailTitle.textContent = "Import Preview";
+  if (importBackupDetailSubtitle) importBackupDetailSubtitle.textContent = "Preview metadata will appear after inspection.";
+  if (importBackupDetailGrid) importBackupDetailGrid.innerHTML = "";
+  if (importBackupComponentSummary) importBackupComponentSummary.innerHTML = "";
+  if (importBackupAuctionTableBody) {
+    importBackupAuctionTableBody.innerHTML = '<tr><td colspan="5">No backup inspected yet.</td></tr>';
+  }
 }
 
 function createAuctionActionButton(icon, title, onClick, { danger = false, disabled = false } = {}) {
@@ -426,65 +743,27 @@ function updateBackupActionState() {
   if (backupNoteInput) backupNoteInput.disabled = backupOperationBusy;
   document.getElementById("backup-db").disabled = backupOperationBusy;
   if (openCreateBackupModalButton) openCreateBackupModalButton.disabled = backupOperationBusy;
+  if (openImportBackupModalButton) openImportBackupModalButton.disabled = backupOperationBusy;
+  if (importBackupFileInput) importBackupFileInput.disabled = backupOperationBusy;
+  if (inspectImportedBackupButton) inspectImportedBackupButton.disabled = backupOperationBusy;
+  if (confirmImportBackupButton) {
+    const canConfirmImport = Boolean(pendingBackupImport?.import_token) && pendingBackupImport?.can_import;
+    confirmImportBackupButton.disabled = backupOperationBusy || !canConfirmImport;
+  }
   if (restoreSelectedBackupButton) restoreSelectedBackupButton.disabled = backupOperationBusy || !hasSelection;
   if (saveRestoreLogButton) saveRestoreLogButton.disabled = !lastManagedRestoreLog;
 }
 
 function renderBackupDetails() {
   if (!selectedBackupDetail) return;
-
-  const detail = selectedBackupDetail;
-  const auctions = Array.isArray(detail.auctions) ? detail.auctions : [];
-  const resourceConfigCount = Array.isArray(detail.component_manifest?.resources?.config_files)
-    ? detail.component_manifest.resources.config_files.length
-    : 0;
-
-  backupDetailTitle.textContent = `Backup #${detail.backup_id}`;
-  backupDetailSubtitle.textContent = detail.note
-    ? `Note: ${detail.note}`
-    : `Archive file: ${detail.filename || "Unknown"}`;
-
-  backupDetailGrid.innerHTML = [
-    ["Backup ID", `#${detail.backup_id}`],
-    ["Created", formatDateTime(detail.created_at)],
-    ["User", detail.created_by || "Unknown"],
-    ["Database ID", detail.database_id || "Unknown"],
-    ["Last Restore", detail.restored_at ? formatRestoreSummary(detail) : "Never"],
-    ["Schema", detail.schema_version || "Unknown"],
-    ["Archive Size", formatBytes(detail.archive_size_bytes)],
-    ["Format", `v${detail.format_version || "?"}`],
-    ["Auctions", `${auctions.length}`],
-    ["Archive", detail.filename || "Unknown"]
-  ].map(([label, value]) => `
-    <div class="maintenance-detail-stat">
-      <span class="maintenance-detail-label">${escapeHtml(label)}</span>
-      <span class="maintenance-detail-value">${escapeHtml(value)}</span>
-    </div>
-  `).join("");
-
-  backupComponentSummary.innerHTML = [
-    { label: "Database", value: detail.component_manifest?.database?.included ? "Included" : "Missing" },
-    { label: "Photos", value: `${detail.component_manifest?.photos?.file_count ?? 0} file(s)` },
-    { label: "Resources", value: `${detail.component_manifest?.resources?.image_count ?? 0} image(s)` },
-    { label: "Configs", value: `${resourceConfigCount} file(s)` }
-  ].map((entry) => `<span class="maintenance-inline-pill">${escapeHtml(entry.label)}: ${escapeHtml(entry.value)}</span>`).join("");
-
-  if (backupAuctionTableBody) {
-    if (auctions.length === 0) {
-      backupAuctionTableBody.innerHTML = '<tr><td colspan="5">No auctions recorded in this backup.</td></tr>';
-    } else {
-      backupAuctionTableBody.innerHTML = auctions.map((auction) => `
-        <tr>
-          <td>${escapeHtml(auction.id)}</td>
-          <td>${escapeHtml(auction.short_name)}</td>
-          <td>${escapeHtml(auction.full_name)}</td>
-          <td>${escapeHtml(auction.status)}</td>
-          <td>${escapeHtml(auction.item_count)}${Number(auction.deleted_item_count || 0) > 0 ? ` (${escapeHtml(auction.deleted_item_count)} deleted)` : ""}</td>
-        </tr>
-      `).join("");
-    }
-  }
-
+  renderBackupDetailSummary(selectedBackupDetail, {
+    titleEl: backupDetailTitle,
+    subtitleEl: backupDetailSubtitle,
+    gridEl: backupDetailGrid,
+    componentEl: backupComponentSummary,
+    auctionTableBody: backupAuctionTableBody,
+    titlePrefix: "Backup"
+  });
   updateBackupActionState();
 }
 
@@ -746,7 +1025,7 @@ function setActiveTab(tabId, { persist = true } = {}) {
     localStorage.setItem(MAINTENANCE_TAB_KEY, resolvedTabId);
   }
 
-  if (resolvedTabId === "messaging") {
+  if (resolvedTabId === "diagnostics") {
     void loadMessagingStats();
   }
 }
@@ -1271,6 +1550,8 @@ function getAuctionContextMenuActions(auction) {
   const canReset = auction.status === "archived" || auction.status === "setup";
   const canPurge = Number(auction.deleted_item_count || 0) > 0;
   const canDelete = Number(auction.item_count || 0) <= 0;
+  const shortName = String(auction.short_name || "").trim();
+  const hasPublicUrl = shortName.length > 0;
 
   return [
     {
@@ -1282,6 +1563,33 @@ function getAuctionContextMenuActions(auction) {
       id: "edit",
       label: "Edit auction",
       run: () => openEditAuctionModal(auction)
+    },
+    {
+      id: "test-data",
+      label: "Generate test data/bids",
+      run: () => openTestDataModal(auction)
+    },
+    {
+      id: "public-page",
+      label: "Open public page",
+      disabled: !hasPublicUrl,
+      disabledReason: "Auction has no URL tag",
+      run: () => window.open(
+        `${window.location.origin}/?auction=${encodeURIComponent(shortName)}`,
+        "_blank",
+        "noopener"
+      )
+    },
+    {
+      id: "manage-items",
+      label: "Manage Items",
+      disabled: !hasPublicUrl,
+      disabledReason: "Auction has no URL tag",
+      run: () => window.open(
+        `${window.location.origin}/admin/index.html?auction=${encodeURIComponent(shortName)}`,
+        "_blank",
+        "noopener"
+      )
     },
     {
       id: "admin-state",
@@ -1376,10 +1684,9 @@ function openAuctionContextMenu(row, event) {
   menu.innerHTML = `
     <div class="item-context-menu-header">${escapeHtml(auctionName)}</div>
     <div class="item-context-menu-actions">
-      ${renderAuctionContextMenuAction(actions[0])}
-      ${renderAuctionContextMenuAction(actions[1])}
+      ${actions.slice(0, 5).map(renderAuctionContextMenuAction).join("")}
       ${renderAuctionStatusSubmenu(auction)}
-      ${actions.slice(2).map(renderAuctionContextMenuAction).join("")}
+      ${actions.slice(5).map(renderAuctionContextMenuAction).join("")}
     </div>
   `;
 
@@ -1417,7 +1724,18 @@ function setMaintenanceUserMenu(username) {
 
 function bindMaintenanceShell() {
   const savedTab = localStorage.getItem(MAINTENANCE_TAB_KEY) || "auction-management";
-  const storedTab = savedTab === "database-import-export" ? "database-backups" : savedTab;
+  const legacyTabMap = {
+    "database-import-export": "database-backups",
+    "add-new-auction": "auction-management",
+    "test-data-generator": "auction-management",
+    "csv-import-export": "diagnostics",
+    "server-logs": "diagnostics",
+    "messaging": "diagnostics"
+  };
+  const storedTab = legacyTabMap[savedTab] || savedTab;
+  if (storedTab !== savedTab) {
+    localStorage.setItem(MAINTENANCE_TAB_KEY, storedTab);
+  }
   setActiveTab(storedTab, { persist: false });
 
   tabButtons.forEach((button) => {
@@ -1487,6 +1805,23 @@ function bindMaintenanceShell() {
     }
   });
 
+  openAddAuctionModalButton?.addEventListener("click", openAddAuctionModal);
+  closeAddAuctionModalButton?.addEventListener("click", closeAddAuctionModal);
+  cancelAddAuctionButton?.addEventListener("click", closeAddAuctionModal);
+  addAuctionModal?.addEventListener("click", (event) => {
+    if (event.target === addAuctionModal) {
+      closeAddAuctionModal();
+    }
+  });
+
+  closeTestDataModalButton?.addEventListener("click", closeTestDataModal);
+  cancelTestDataButton?.addEventListener("click", closeTestDataModal);
+  testDataModal?.addEventListener("click", (event) => {
+    if (event.target === testDataModal && !testDataBusy) {
+      closeTestDataModal();
+    }
+  });
+
   refreshMessagingStatsButton?.addEventListener("click", () => {
     void loadMessagingStats({ announce: true });
   });
@@ -1534,6 +1869,34 @@ function bindMaintenanceShell() {
     }
   });
 
+  openImportBackupModalButton?.addEventListener("click", () => {
+    resetImportBackupPreview();
+    openModal(importBackupModal);
+    importBackupFileInput?.focus();
+  });
+  closeImportBackupModalButton?.addEventListener("click", () => closeModal(importBackupModal));
+  cancelImportBackupButton?.addEventListener("click", () => closeModal(importBackupModal));
+  importBackupModal?.addEventListener("click", (event) => {
+    if (event.target === importBackupModal) {
+      closeModal(importBackupModal);
+    }
+  });
+  importBackupFileInput?.addEventListener("change", () => {
+    pendingBackupImport = null;
+    setImportBackupStatus("Selected file ready to inspect.", "info");
+    setImportBackupProgress({ hidden: true });
+    renderImportValidation(null);
+    renderImportComparison(null);
+    if (importBackupDetailTitle) importBackupDetailTitle.textContent = "Import Preview";
+    if (importBackupDetailSubtitle) importBackupDetailSubtitle.textContent = "Preview metadata will appear after inspection.";
+    if (importBackupDetailGrid) importBackupDetailGrid.innerHTML = "";
+    if (importBackupComponentSummary) importBackupComponentSummary.innerHTML = "";
+    if (importBackupAuctionTableBody) {
+      importBackupAuctionTableBody.innerHTML = '<tr><td colspan="5">No backup inspected yet.</td></tr>';
+    }
+    updateBackupActionState();
+  });
+
   openAddUserModalButton?.addEventListener("click", () => {
     resetAddUserForm();
     openModal(addUserModal);
@@ -1559,6 +1922,7 @@ function bindMaintenanceShell() {
 bindMaintenanceShell();
 updateVersionDisplays();
 setBackupOperationStatus("No backup operation running.");
+resetImportBackupPreview();
 updateBackupActionState();
 checkToken();
 
@@ -1571,40 +1935,40 @@ window.addEventListener("beforeunload", () => {
 function promptPassword(message, message2 = "") {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
-    overlay.style.cssText = `
-      position:fixed; inset:0; background:rgba(0,0,0,.5);
-      display:flex; align-items:center; justify-content:center; z-index:9999;
-    `;
+    overlay.className = "password-modal-overlay";
 
     const box = document.createElement("div");
-    box.style.cssText = `
-      background:#fff; padding:16px; border-radius:8px; width:min(420px, 92vw);
-      box-shadow:0 8px 24px rgba(0,0,0,.2); font-family:system-ui, sans-serif;
-    `;
+    box.className = "password-modal-card";
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-modal", "true");
 
-    const p = document.createElement("div");
-    p.textContent = message;
-    p.style.marginBottom = "10px";
+    const heading = document.createElement("h3");
+    heading.className = "password-modal-title";
+    heading.textContent = message;
 
-    const p2 = document.createElement("div");
-    p2.textContent = message2;
-    p2.style.marginBottom = "10px";
+    const description = document.createElement("p");
+    description.className = "password-modal-description";
+    description.textContent = message2;
+    description.hidden = !message2;
 
     const input = document.createElement("input");
     input.type = "password";
     input.autocomplete = "current-password";
-    input.style.cssText = "width:100%; padding:8px; box-sizing:border-box;";
+    input.className = "password-modal-input";
+    input.setAttribute("aria-label", "Current password");
 
     const row = document.createElement("div");
-    row.style.cssText = "display:flex; justify-content:flex-end; gap:8px; margin-top:12px;";
+    row.className = "password-modal-actions";
 
     const cancel = document.createElement("button");
     cancel.type = "button";
     cancel.textContent = "Cancel";
+    cancel.className = "password-modal-button";
 
     const ok = document.createElement("button");
     ok.type = "button";
     ok.textContent = "OK";
+    ok.className = "password-modal-button password-modal-button--primary";
 
     function close(val) {
       overlay.remove();
@@ -1621,7 +1985,7 @@ function promptPassword(message, message2 = "") {
     });
 
     row.append(cancel, ok);
-    box.append(p2, p, input, row);
+    box.append(heading, description, input, row);
     overlay.append(box);
     document.body.append(overlay);
     input.focus();
@@ -1723,7 +2087,7 @@ async function checkToken() {
     }
     startAutoRefresh();
     loadEnabledPaymentMethods();
-    if (localStorage.getItem(MAINTENANCE_TAB_KEY) === "messaging") {
+    if (localStorage.getItem(MAINTENANCE_TAB_KEY) === "diagnostics") {
       loadMessagingStats();
     }
     updateVersionDisplays(session.versions);
@@ -1777,6 +2141,138 @@ document.getElementById("backup-db").onclick = async () => {
     updateBackupActionState();
   }
 };
+
+inspectImportedBackupButton?.addEventListener("click", async () => {
+  if (!importBackupFileInput?.files?.length) {
+    showMessage("Select a backup zip to inspect.", "info");
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("backup", importBackupFileInput.files[0]);
+
+  try {
+    backupOperationBusy = true;
+    updateBackupActionState();
+    pendingBackupImport = null;
+    setImportBackupStatus("Uploading backup archive...", "info");
+    setImportBackupProgress({
+      hidden: false,
+      label: "Uploading backup archive...",
+      percent: 0
+    });
+    renderImportValidation(null);
+    renderImportComparison(null);
+
+    const data = await postFormDataWithUploadProgress(`${API}/maintenance/backups/import/inspect`, formData, (event) => {
+      if (event.lengthComputable) {
+        const percent = (event.loaded / event.total) * 100;
+        setImportBackupProgress({
+          hidden: false,
+          label: "Uploading backup archive...",
+          percent
+        });
+      } else {
+        setImportBackupProgress({
+          hidden: false,
+          label: "Uploading backup archive...",
+          percent: null
+        });
+      }
+    });
+    setImportBackupStatus("Inspecting uploaded backup archive...", "info");
+    setImportBackupProgress({
+      hidden: false,
+      label: "Inspecting uploaded backup archive...",
+      percent: 100
+    });
+
+    pendingBackupImport = data;
+    renderImportValidation(data);
+    renderImportComparison(data);
+    renderBackupDetailSummary(data.preview, {
+      titleEl: importBackupDetailTitle,
+      subtitleEl: importBackupDetailSubtitle,
+      gridEl: importBackupDetailGrid,
+      componentEl: importBackupComponentSummary,
+      auctionTableBody: importBackupAuctionTableBody,
+      titlePrefix: "Import Preview"
+    });
+    setImportBackupStatus(
+      data.can_import
+        ? "Backup archive passed inspection and can be imported."
+        : "Backup archive inspection found blocking problems.",
+      data.can_import ? "success" : "error"
+    );
+    setImportBackupProgress({ hidden: true });
+  } catch (error) {
+    setImportBackupProgress({ hidden: true });
+    setImportBackupStatus(error.message || "Backup inspection failed.", "error");
+    renderImportValidation({
+      blocking_errors: [error.message || "Backup inspection failed."],
+      warnings: []
+    });
+    showMessage(error.message || "Backup inspection failed.", "error");
+  } finally {
+    backupOperationBusy = false;
+    updateBackupActionState();
+  }
+});
+
+confirmImportBackupButton?.addEventListener("click", async () => {
+  if (!pendingBackupImport?.import_token || !pendingBackupImport?.can_import) {
+    showMessage("Inspect a valid backup archive before importing.", "info");
+    return;
+  }
+
+  const sourceLabel = pendingBackupImport?.preview?.archive_backup_id
+    ? `source backup #${pendingBackupImport.preview.archive_backup_id}`
+    : "this backup";
+  const confirmed = await confirmMaintenanceAction(
+    `Import <strong>${escapeHtml(sourceLabel)}</strong> into this server's backup list?`,
+    {
+      okText: "Import Backup",
+      cancelText: "Cancel",
+      height: 70
+    }
+  );
+  if (!confirmed) return;
+
+  try {
+    backupOperationBusy = true;
+    updateBackupActionState();
+    setImportBackupStatus("Importing backup into the server backup store...", "info");
+
+    const res = await fetch(`${API}/maintenance/backups/import/confirm`, {
+      method: "POST",
+      headers: {
+        Authorization: token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ import_token: pendingBackupImport.import_token })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to import backup archive.");
+    }
+
+    setImportBackupStatus(data.message || "Backup imported.", "success");
+    showMessage(data.message || "Backup imported.", "success");
+    const importedBackupId = data.backup?.backup_id || null;
+    resetImportBackupPreview();
+    closeModal(importBackupModal);
+    await loadManagedBackups({ preserveSelection: false });
+    if (importedBackupId) {
+      await selectManagedBackup(importedBackupId);
+    }
+  } catch (error) {
+    setImportBackupStatus(error.message || "Backup import failed.", "error");
+    showMessage(error.message || "Backup import failed.", "error");
+  } finally {
+    backupOperationBusy = false;
+    updateBackupActionState();
+  }
+});
 
 refreshBackupsButton?.addEventListener("click", () => {
   void loadManagedBackups();
@@ -1969,58 +2465,6 @@ saveRestoreLogButton?.addEventListener("click", () => {
   window.URL.revokeObjectURL(url);
 });
 
-document.getElementById("download-db-file").onclick = async () => {
-  const res = await fetch(`${API}/maintenance/download-db`, {
-    headers: { Authorization: token }
-  });
-
-  const disposition = res.headers.get("Content-Disposition");
-  let filename = "auction.db";
-
-  if (disposition && disposition.includes("filename=")) {
-    const match = disposition.match(/filename=\"?([^\";]+)\"?/);
-    if (match && match[1]) {
-      filename = match[1];
-    }
-  }
-
-  const blob = await res.blob();
-  const url = window.URL.createObjectURL(blob);
-
-  const a = document.createElement("a");
-  a.href = url;
-  a.setAttribute("download", filename);
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  window.URL.revokeObjectURL(url);
-};
-
-
-
-
-
-document.getElementById("restore-db").onclick = async () => {
-  const fileInput = document.getElementById("restore-file");
-  if (!fileInput.files.length) return showMessage("Select a file", "info");
-  const formData = new FormData();
-  formData.append("backup", fileInput.files[0]);
-  const res = await fetch(`${API}/maintenance/restore`, {
-    method: "POST",
-    headers: { Authorization: token },
-    body: formData
-  });
-  const data = await res.json();
-
-  if (res.ok) {
-    showMessage(data.message, "success");
-    await window.AppAuth?.refreshSession?.();
-  } else {
-    showMessage(data.error || "Restore failed", "error");
-  }
-
-};
-
 document.getElementById("export-csv").onclick = async () => {
   const res = await fetch(`${API}/maintenance/export`, {
     headers: { Authorization: token }
@@ -2055,10 +2499,85 @@ document.getElementById("export-csv").onclick = async () => {
 //   }
 // };
 
+function renderStorageReport(data) {
+  if (!photoStorageResults) return;
+
+  const totals = data.totals || {};
+  const counts = data.counts || {};
+  const categories = Array.isArray(data.categories) ? data.categories : [];
+  const countCards = [
+    ["Auctions", counts.auctions],
+    ["Items", counts.items],
+    ["Resources", counts.resources]
+  ];
+
+  photoStorageResults.style.display = "block";
+  photoStorageResults.innerHTML = `
+    <div class="storage-report-summary">
+      <div class="storage-report-stat">
+        <span>Total occupied</span>
+        <strong>${escapeHtml(formatBytes(totals.occupied_bytes))}</strong>
+      </div>
+      <div class="storage-report-stat">
+        <span>Free across mounts</span>
+        <strong>${escapeHtml(formatNullableBytes(totals.free_bytes))}</strong>
+      </div>
+      <div class="storage-report-stat">
+        <span>Mounts counted</span>
+        <strong>${escapeHtml(formatInteger(totals.unique_mount_count))}</strong>
+      </div>
+      <div class="storage-report-stat">
+        <span>Mount capacity</span>
+        <strong>${escapeHtml(formatNullableBytes(totals.capacity_bytes))}</strong>
+      </div>
+    </div>
+    <div class="storage-report-counts">
+      ${countCards.map(([label, value]) => `
+        <div class="storage-report-stat">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(formatCountLimit(value?.count, value?.limit))}</strong>
+        </div>
+      `).join("")}
+    </div>
+    <div class="table-wrap storage-report-table-wrap">
+      <table class="maintenance-data-table storage-report-table">
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>Occupied</th>
+            <th>Free on mount</th>
+            <th>Mount size</th>
+            <th>Path</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${categories.map((category) => `
+            <tr>
+              <td>
+                <strong>${escapeHtml(category.label || category.key || "Unknown")}</strong>
+                ${category.error ? `<div class="storage-report-warning">${escapeHtml(category.error)}</div>` : ""}
+              </td>
+              <td>${escapeHtml(formatBytes(category.occupied_bytes))}</td>
+              <td>${escapeHtml(formatNullableBytes(category.free_bytes))}</td>
+              <td>${escapeHtml(formatNullableBytes(category.capacity_bytes))}</td>
+              <td><code>${escapeHtml(category.path || "")}</code></td>
+            </tr>
+          `).join("")}
+        </tbody>
+
+      </table>
+    </div>
+  `;
+}
+
 document.getElementById("photo-report").onclick = async () => {
   const res = await fetch(`${API}/maintenance/photo-report`, { headers: { Authorization: token } });
   const data = await res.json();
-  showMessage(`Stored images: ${data.count}, Total size: ${(data.totalSize / 1024 / 1024).toFixed(2)} MB`);
+  if (!res.ok) {
+    return showMessage(data.error || "Could not get storage report.", "error");
+  }
+  renderStorageReport(data);
+ // showMessage(`Stored images: ${formatInteger(data.count)}, Total image size: ${formatBytes(data.totalSize)}`, "success");
 };
 
 function formatLogs(rawText) {
@@ -2813,7 +3332,7 @@ document.getElementById("auto-refresh-logs").addEventListener("change", function
 });
 
 popoutLogsButton?.addEventListener("click", () => {
-  setActiveTab("server-logs");
+  setActiveTab("diagnostics");
   openLogPopup();
   if (!latestServerLog) {
     loadLogs();
@@ -2858,95 +3377,137 @@ document.getElementById("cleanup-orphans").onclick = async () => {
 
 document.getElementById("generate-test-data").onclick = async () => {
   const count = parseInt(document.getElementById("test-count").value, 10);
-  const auctionId = parseInt(document.getElementById("test-auction-select").value, 10);
-
-
+  const auction = getSelectedTestAuction();
   if (!count || count < 1) return showMessage("Enter a valid number of test items.", "error");
-  if (!auctionId) return showMessage("Please select an auction.", "error");
+  if (!auction) return showMessage("Please select an auction.", "error");
+  if (testDataBusy) return;
 
-  showMessage("Generating test data...");
-  document.getElementById("generate-test-data").disabled = true;
+  const state = normalizeAuctionStatus(auction.status);
+  const auctionName = auction.full_name || auction.short_name || `Auction ${auction.id}`;
+  const stateWarning = ["setup", "locked"].includes(state)
+    ? ""
+    : ` Warning: this auction is in state "${state}". Test items are normally added only in setup or locked.`;
+  const message = `Generate ${count} test item${count === 1 ? "" : "s"} for "${auctionName}"?${stateWarning}`;
 
+  setTestDataBusy(true);
+  try {
+    const confirmed = await confirmMaintenanceAction(message, {
+      okText: "Generate Items",
+      cancelText: "Cancel",
+      height: stateWarning ? 120 : 80
+    });
+    if (!confirmed) return;
 
-  const res = await fetch(`${API}/maintenance/generate-test-data`, {
-    method: "POST",
-    headers: {
-      Authorization: token,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ count, auction_id: auctionId })
-  });
-
-  const data = await res.json();
-  if (res.ok) {
-    document.getElementById("generate-test-data").disabled = false;
+    showMessage("Generating test data...");
+    const res = await fetch(`${API}/maintenance/generate-test-data`, {
+      method: "POST",
+      headers: {
+        Authorization: token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ count, auction_id: Number(auction.id) })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to generate test data");
+    }
 
     showMessage(data.message, "success");
-    refreshAuctions();
-  } else {
-    showMessage(data.error || "Failed to generate test data", "error");
-    document.getElementById("generate-test-data").disabled = false;
-
+    await refreshAuctions();
+  } catch (error) {
+    showMessage(error?.message || "Failed to generate test data", "error");
+  } finally {
+    setTestDataBusy(false);
   }
 };
 
 document.getElementById("generate-bids-btn").onclick = async () => {
-  const auctionId = parseInt(document.getElementById("test-auction-select").value, 10);
+  const auction = getSelectedTestAuction();
   const numBids = parseInt(document.getElementById("test-bid-count").value, 10);
   const numBidders = parseInt(document.getElementById("test-bidder-count").value, 10);
 
-  if (!auctionId || isNaN(numBids) || isNaN(numBidders)) {
+  if (!auction || !Number.isInteger(numBids) || numBids < 1 || !Number.isInteger(numBidders) || numBidders < 1) {
     showMessage("Please enter valid numbers and select an auction.", "error");
     return;
   }
+  if (testDataBusy) return;
 
-  const res = await fetch(`${API}/maintenance/generate-bids`, {
-    method: "POST",
-    headers: {
-      Authorization: token,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ auction_id: auctionId, num_bids: numBids, num_bidders: numBidders })
-  });
+  const state = normalizeAuctionStatus(auction.status);
+  const auctionName = auction.full_name || auction.short_name || `Auction ${auction.id}`;
+  const stateWarning = ["live", "settlement"].includes(state)
+    ? ""
+    : ` Warning: this auction is in state "${state}". Test bids are normally added only in live or settlement.`;
+  const message = `Generate ${numBids} test bid${numBids === 1 ? "" : "s"} from ${numBidders} bidder${numBidders === 1 ? "" : "s"} for "${auctionName}"?${stateWarning}`;
 
-  const data = await res.json();
-  if (res.ok) {
+  setTestDataBusy(true);
+  try {
+    const confirmed = await confirmMaintenanceAction(message, {
+      okText: "Generate Bids",
+      cancelText: "Cancel",
+      height: stateWarning ? 120 : 80
+    });
+    if (!confirmed) return;
+
+    showMessage("Generating test bids...");
+    const res = await fetch(`${API}/maintenance/generate-bids`, {
+      method: "POST",
+      headers: {
+        Authorization: token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ auction_id: Number(auction.id), num_bids: numBids, num_bidders: numBidders })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to generate bids");
+    }
+
     showMessage(data.message, "success");
-    refreshAuctions();
-  } else {
-    showMessage(data.error || "Failed to generate bids", "error");
+    await refreshAuctions();
+  } catch (error) {
+    showMessage(error?.message || "Failed to generate bids", "error");
+  } finally {
+    setTestDataBusy(false);
   }
 };
 
 document.getElementById("delete-test-bids").onclick = async () => {
-  const auctionId = parseInt(document.getElementById("test-auction-select").value, 10);
-  if (!auctionId) {
+  const auction = getSelectedTestAuction();
+  if (!auction) {
     showMessage("Please select an auction", "error");
     return;
   }
+  if (testDataBusy) return;
 
-  const confirmed = await confirmMaintenanceAction("Delete all test bids for this auction?", {
-    okText: "Delete Bids",
-    cancelText: "Cancel",
-    height: 60
-  });
-  if (!confirmed) return;
+  const auctionName = auction.full_name || auction.short_name || `Auction ${auction.id}`;
+  setTestDataBusy(true);
+  try {
+    const confirmed = await confirmMaintenanceAction(`Delete all test bids for "${auctionName}"?`, {
+      okText: "Delete Bids",
+      cancelText: "Cancel",
+      height: 70
+    });
+    if (!confirmed) return;
 
-  const res = await fetch(`${API}/maintenance/delete-test-bids`, {
-    method: "POST",
-    headers: {
-      Authorization: token,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ auction_id: auctionId })
-  });
+    const res = await fetch(`${API}/maintenance/delete-test-bids`, {
+      method: "POST",
+      headers: {
+        Authorization: token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ auction_id: Number(auction.id) })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to delete test bids");
+    }
 
-  const data = await res.json();
-  if (res.ok) {
     showMessage(data.message, "success");
-    refreshAuctions?.(); // or any function to refresh the view
-  } else {
-    showMessage(data.error || "Failed to delete test bids", "error");
+    await refreshAuctions();
+  } catch (error) {
+    showMessage(error?.message || "Failed to delete test bids", "error");
+  } finally {
+    setTestDataBusy(false);
   }
 };
 
@@ -3058,8 +3619,8 @@ try {
 
     row.innerHTML = `
     <td>${escapeHtml(auction.id)}</td>
-    <td><a href="${baseUrl}/?auction=${encodeURIComponent(auction.short_name)}" target="_blank">${escapeHtml(auction.short_name)}</a></td>
-    <td>${escapeHtml(auction.full_name)}</td>
+    <td><a class="maintenance-table-link maintenance-table-link--label" href="${baseUrl}/?auction=${encodeURIComponent(auction.short_name)}" target="_blank">${escapeHtml(auction.short_name)}</a></td>
+    <td><a class="maintenance-table-link maintenance-table-link--plain" href="${baseUrl}/admin/index.html?auction=${encodeURIComponent(auction.short_name)}" rel="noopener">${escapeHtml(auction.full_name)}</a></td>
     <td style="text-align:center;"><img src="${logoSrc}" alt="Logo" style="height:40px; max-width:100px; object-fit:contain;"></td>
     <td>${escapeHtml(auction.item_count)}${Number(auction.deleted_item_count || 0) > 0 ? ` (${escapeHtml(auction.deleted_item_count)} deleted)` : ""}</td>
     <td>${escapeHtml(formatAuctionStatus(auction.status))}</td>
@@ -3074,6 +3635,11 @@ try {
       AUCTION_ACTION_ICONS.qr,
       "Generate auction URL QR code",
       () => openAuctionQrModal(auction)
+    ));
+    actionRow.appendChild(createAuctionActionButton(
+      AUCTION_ACTION_ICONS.testData,
+      "Generate test data",
+      () => openTestDataModal(auction)
     ));
     actionRow.appendChild(createAuctionActionButton(
       AUCTION_ACTION_ICONS.edit,
@@ -3099,22 +3665,6 @@ try {
 isRendering = false;
 }
 
-  // populate the test data dropdown
-  const testAuctionSelect = document.getElementById("test-auction-select");
-  const previousValue = testAuctionSelect.value;
-
-  testAuctionSelect.innerHTML = '<option value="">-- Select Auction --</option>';
-
-  auctions.forEach(auction => {
-    const option = document.createElement("option");
-    option.value = auction.id;
-    option.textContent = `${auction.full_name} (${auction.status})`;
-    if (auction.status === "archive") { option.disabled = true };
-
-    testAuctionSelect.appendChild(option);
-  });
-  testAuctionSelect.value = previousValue;
-
 }
 
 document.getElementById("create-auction").onclick = async () => {
@@ -3139,8 +3689,8 @@ document.getElementById("create-auction").onclick = async () => {
   const data = await res.json();
   if (res.ok) {
     showMessage(data.message, "success");
-    document.getElementById("auction-short-name").value = "";
-    document.getElementById("auction-full-name").value = "";
+    resetAddAuctionForm();
+    closeAddAuctionModal();
     refreshAuctions();
   } else {
     showMessage(data.error || "Failed to create auction", "error");
@@ -3573,6 +4123,8 @@ async function loadPptxImageList() {
     const link = document.createElement("a");
     link.href = `${API}/resources/${encodeURIComponent(file.name)}`;
     link.target = "_blank";
+    link.rel = "noopener";
+    link.className = "maintenance-table-link maintenance-table-link--label";
     link.textContent = file.name;
     nameTd.appendChild(link);
     const sizeTd = document.createElement("td");
@@ -3874,7 +4426,7 @@ function startAutoRefresh() {
       loadPptxImageList();
       loadManagedBackups();
       loadUsers();
-      if (localStorage.getItem(MAINTENANCE_TAB_KEY) === "messaging") {
+      if (localStorage.getItem(MAINTENANCE_TAB_KEY) === "diagnostics") {
         loadMessagingStats();
       }
 
@@ -3889,7 +4441,7 @@ document.addEventListener("visibilitychange", () => {
     loadPptxImageList();
     loadManagedBackups();
     loadUsers();
-    if (localStorage.getItem(MAINTENANCE_TAB_KEY) === "messaging") {
+    if (localStorage.getItem(MAINTENANCE_TAB_KEY) === "diagnostics") {
       loadMessagingStats();
     }
 

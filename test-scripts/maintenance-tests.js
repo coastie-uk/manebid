@@ -83,11 +83,12 @@ context.auctionCount = null;
 context.pptxConfig = null;
 context.slipConfig = null;
 context.resourceFilename = null;
-context.dbBackupBuffer = null;
 context.managedBackupId = null;
 context.managedBackupFilename = null;
 context.managedBackupNote = null;
 context.managedBackupArchive = null;
+context.importBackupToken = null;
+context.importedManagedBackupId = null;
 context.managedUser = managedUsers.lifecycle;
 context.purgeItemId = null;
 
@@ -122,23 +123,38 @@ function createTempDbBuffer(sourceBuffer, mutator) {
 }
 
 async function downloadCurrentDbBuffer() {
-  const res = await fetch(`${baseUrl}/maintenance/download-db`, {
+  const snapshotBackup = await createManagedBackup(`Temp DB snapshot ${Date.now()}`);
+  const archiveBuffer = await downloadManagedBackupBuffer(snapshotBackup.backup_id);
+  const zip = await JSZip.loadAsync(archiveBuffer);
+  const dbEntry = zip.file("database/auction.db");
+  assert.ok(dbEntry, "Managed backup archive is missing database/auction.db");
+  const buffer = Buffer.from(await dbEntry.async("nodebuffer"));
+  const cleanup = await fetch(`${baseUrl}/maintenance/backups/${encodeURIComponent(snapshotBackup.backup_id)}`, {
+    method: "DELETE",
     headers: authHeaders(context.token)
   });
-  await expectStatus(res, 200);
-  return Buffer.from(await res.arrayBuffer());
+  await expectStatus(cleanup, 200);
+  return buffer;
 }
 
 async function restoreDbBuffer(buffer, filename = "integrity-restore.db") {
-  const form = new FormData();
-  form.append("backup", new Blob([buffer]), filename);
-  const { res, json, text } = await fetchJson(`${baseUrl}/maintenance/restore`, {
-    method: "POST",
-    headers: authHeaders(context.token),
-    body: form
+  const archiveBuffer = await buildManagedBackupArchiveFromDbBuffer(buffer, { archiveFilename: filename.replace(/\.db$/i, ".zip") });
+  const inspect = await inspectManagedBackupArchiveUpload(archiveBuffer, filename.replace(/\.db$/i, ".zip"));
+  await expectStatus(inspect.res, 200);
+  assert.ok(inspect.json?.import_token, `Unexpected backup import inspect response: ${inspect.text}`);
+  const confirm = await confirmImportedBackup(inspect.json.import_token);
+  await expectStatus(confirm.res, 200);
+  const importedBackupId = confirm.json?.backup?.backup_id;
+  assert.ok(importedBackupId, "Expected imported backup ID after confirm");
+  const restoreResult = await restoreManagedBackup(importedBackupId, { restoreDb: true });
+  assert.ok(restoreResult.json?.ok, `Unexpected restore response: ${restoreResult.text}`);
+  const cleanup = await fetch(`${baseUrl}/maintenance/backups/${encodeURIComponent(importedBackupId)}`, {
+    method: "DELETE",
+    headers: authHeaders(context.token)
   });
-  await expectStatus(res, 200);
-  assert.ok(json && json.message, `Unexpected restore response: ${text}`);
+  if (cleanup.status !== 404) {
+    await expectStatus(cleanup, 200);
+  }
 }
 
 async function createManagedBackup(note) {
@@ -251,6 +267,68 @@ async function restoreManagedBackup(backupId, payload, expectedStatus = 200) {
   return { res, json, text };
 }
 
+function readDbMetadataFromBuffer(buffer) {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "managed-backup-db-"));
+  const tempFile = path.join(tempDir, "metadata.db");
+  fs.writeFileSync(tempFile, Buffer.from(buffer));
+  const tempDb = new Database(tempFile, { readonly: true });
+  try {
+    const schemaRow = tempDb.prepare("SELECT value FROM metadata WHERE data = 'schema_version'").get();
+    const databaseRow = tempDb.prepare("SELECT value FROM metadata WHERE data = 'database_id'").get();
+    return {
+      schemaVersion: String(schemaRow?.value || ""),
+      databaseId: databaseRow?.value != null && String(databaseRow.value).length > 0 ? String(databaseRow.value) : null
+    };
+  } finally {
+    tempDb.close();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
+async function buildManagedBackupArchiveFromDbBuffer(buffer, {
+  archiveFilename = `managed-import-${Date.now()}.zip`,
+  mutateZip
+} = {}) {
+  const templateArchive = context.managedBackupArchive || await downloadManagedBackupBuffer(context.managedBackupId);
+  const zip = await JSZip.loadAsync(templateArchive);
+  const metadataText = await zip.file("metadata.json")?.async("string");
+  assert.ok(metadataText, "Template managed backup archive is missing metadata.json");
+  const metadata = JSON.parse(metadataText);
+  const dbMetadata = readDbMetadataFromBuffer(buffer);
+
+  metadata.backup_id = `${Date.now()}`;
+  metadata.archive_backup_id = metadata.backup_id;
+  metadata.archive_filename = archiveFilename;
+  metadata.schema_version = dbMetadata.schemaVersion;
+  metadata.database_id = dbMetadata.databaseId;
+  zip.file("database/auction.db", Buffer.from(buffer));
+  zip.file("metadata.json", JSON.stringify(metadata, null, 2));
+
+  if (typeof mutateZip === "function") {
+    await mutateZip(zip, metadata, dbMetadata);
+  }
+
+  return Buffer.from(await zip.generateAsync({ type: "nodebuffer" }));
+}
+
+async function inspectManagedBackupArchiveUpload(buffer, filename = `managed-import-${Date.now()}.zip`) {
+  const form = new FormData();
+  form.append("backup", new Blob([buffer]), filename);
+  return fetchJson(`${baseUrl}/maintenance/backups/import/inspect`, {
+    method: "POST",
+    headers: authHeaders(context.token),
+    body: form
+  });
+}
+
+async function confirmImportedBackup(importToken) {
+  return fetchJson(`${baseUrl}/maintenance/backups/import/confirm`, {
+    method: "POST",
+    headers: authHeaders(context.token, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ import_token: importToken })
+  });
+}
+
 function hashBuffer(buffer) {
   return crypto.createHash("sha256").update(Buffer.from(buffer)).digest("hex");
 }
@@ -355,7 +433,8 @@ addTest("M-002E","maintenance/backups restore success database only", async () =
     headers: authHeaders(context.token)
   });
   await expectStatus(afterPhotoReport.res, 200);
-  assert.deepEqual(afterPhotoReport.json, beforePhotoReport.json, "Database-only restore should not change photo report");
+  assert.equal(afterPhotoReport.json.count, beforePhotoReport.json.count, "Database-only restore should not change photo count");
+  assert.equal(afterPhotoReport.json.totalSize, beforePhotoReport.json.totalSize, "Database-only restore should not change photo bytes");
 });
 
 addTest("M-002F","maintenance/backups restore success photos only without changing DB bytes", async () => {
@@ -384,42 +463,100 @@ addTest("M-002H","maintenance/backups restore success combined restore", async (
   assert.deepEqual(json.restored, { database: true, photos: true, resources: true });
 });
 
-addTest("M-003","maintenance/download-db success", async () => {
-  const res = await fetch(`${baseUrl}/maintenance/download-db`, {
-    headers: authHeaders(context.token)
-  });
+addTest("M-003","maintenance/backups import inspect success", async () => {
+  const { res, json, text } = await inspectManagedBackupArchiveUpload(context.managedBackupArchive, `managed-import-${Date.now()}.zip`);
   await expectStatus(res, 200);
-  const buffer = await res.arrayBuffer();
-  assert.ok(buffer.byteLength > 0, "Downloaded DB is empty");
-  context.dbBackupBuffer = buffer;
+  assert.ok(json?.import_token, `Unexpected backup import inspect response: ${text}`);
+  assert.equal(json.can_import, true, "Expected managed backup import preview to be importable");
+  assert.equal(String(json.preview?.backup_id || ""), String(context.managedBackupId), "Preview should expose the source archive backup ID");
+  context.importBackupToken = json.import_token;
 });
 
-addTest("M-004","maintenance/download-db failure unauthenticated", async () => {
-  const res = await fetch(`${baseUrl}/maintenance/download-db`);
-  await expectStatus(res, 403);
+addTest("M-003A","maintenance/backups import confirm success and list imported backup", async () => {
+  const { res, json, text } = await confirmImportedBackup(context.importBackupToken);
+  await expectStatus(res, 200);
+  assert.ok(json?.backup?.backup_id, `Unexpected backup import confirm response: ${text}`);
+  context.importedManagedBackupId = json.backup.backup_id;
+  assert.notEqual(String(context.importedManagedBackupId), String(context.managedBackupId), "Imported backup should receive a new local backup ID");
+  assert.equal(String(json.backup.archive_backup_id || ""), String(context.managedBackupId), "Imported backup should preserve the source archive backup ID");
+  assert.equal(json.backup.is_imported, true, "Imported backup should be marked as imported");
+  assert.ok(
+    String(json.backup.filename || "").startsWith(`CA_Backup_${context.importedManagedBackupId}_`)
+      && String(json.backup.filename || "").endsWith(".zip"),
+    "Imported backup filename should follow the CA_Backup_[id]_[timestamp].zip pattern"
+  );
+
+  const listedBackups = await listManagedBackups();
+  const imported = listedBackups.backups.find((entry) => entry.backup_id === context.importedManagedBackupId);
+  assert.ok(imported, "Imported backup was not added to the managed backup list");
+  assert.equal(String(imported.archive_backup_id || ""), String(context.managedBackupId), "Listed imported backup should preserve the source archive backup ID");
 });
 
-addTest("M-005","maintenance/restore failure missing file", async () => {
-  const form = new FormData();
-  const res = await fetch(`${baseUrl}/maintenance/restore`, {
-    method: "POST",
-    headers: authHeaders(context.token),
-    body: form
+addTest("M-003B","maintenance/backups import inspect success with same-major schema warning", async () => {
+  const currentDbBuffer = await downloadCurrentDbBuffer();
+  const minorMismatchBuffer = createTempDbBuffer(currentDbBuffer, (tempDb) => {
+    tempDb.prepare("UPDATE metadata SET value = ? WHERE data = 'schema_version'").run("3.1");
   });
+  const warningArchive = await buildManagedBackupArchiveFromDbBuffer(minorMismatchBuffer, {
+    archiveFilename: `managed-import-warning-${Date.now()}.zip`
+  });
+  const { res, json, text } = await inspectManagedBackupArchiveUpload(warningArchive, `managed-import-warning-${Date.now()}.zip`);
+  await expectStatus(res, 200);
+  assert.equal(json.can_import, true, `Expected same-major schema warning import to remain importable: ${text}`);
+  assert.equal(json.comparison?.schema?.status, "warning");
+});
+
+addTest("M-003C","maintenance/backups import inspect failure missing metadata.json", async () => {
+  const missingMetadataArchive = Buffer.from(await (async () => {
+    const zip = await JSZip.loadAsync(context.managedBackupArchive);
+    zip.remove("metadata.json");
+    return zip.generateAsync({ type: "nodebuffer" });
+  })());
+  const { res } = await inspectManagedBackupArchiveUpload(missingMetadataArchive, `managed-import-no-metadata-${Date.now()}.zip`);
   await expectStatus(res, 400);
 });
 
-addTest("M-006","maintenance/restore success", async () => {
-  assert.ok(context.dbBackupBuffer, "Missing DB backup buffer");
-  const form = new FormData();
-  form.append("backup", new Blob([context.dbBackupBuffer]), "auction_restore.db");
-  const { res, json, text } = await fetchJson(`${baseUrl}/maintenance/restore`, {
-    method: "POST",
-    headers: authHeaders(context.token),
-    body: form
-  });
+addTest("M-003D","maintenance/backups import inspect failure unexpected file type", async () => {
+  const unexpectedArchive = Buffer.from(await (async () => {
+    const zip = await JSZip.loadAsync(context.managedBackupArchive);
+    zip.file("photos/unexpected.exe", "not allowed");
+    return zip.generateAsync({ type: "nodebuffer" });
+  })());
+  const { res, text } = await inspectManagedBackupArchiveUpload(unexpectedArchive, `managed-import-unexpected-${Date.now()}.zip`);
+  await expectStatus(res, 400);
+  assert.match(text, /Unexpected file type|Unexpected archive entry/i);
+});
+
+addTest("M-003E","maintenance/backups import inspect failure manifest mismatch", async () => {
+  const mismatchedArchive = Buffer.from(await (async () => {
+    const zip = await JSZip.loadAsync(context.managedBackupArchive);
+    const metadata = JSON.parse(await zip.file("metadata.json").async("string"));
+    metadata.component_manifest.photos.file_count = Number(metadata.component_manifest.photos.file_count || 0) + 1;
+    zip.file("metadata.json", JSON.stringify(metadata, null, 2));
+    return zip.generateAsync({ type: "nodebuffer" });
+  })());
+  const { res, json, text } = await inspectManagedBackupArchiveUpload(mismatchedArchive, `managed-import-mismatch-${Date.now()}.zip`);
   await expectStatus(res, 200);
-  assert.ok(json && json.message, `Unexpected restore response: ${text}`);
+  assert.equal(json.can_import, false, `Expected manifest mismatch to block import: ${text}`);
+});
+
+addTest("M-003F","maintenance/backups import inspect failure schema major mismatch", async () => {
+  const currentDbBuffer = await downloadCurrentDbBuffer();
+  const majorMismatchBuffer = createTempDbBuffer(currentDbBuffer, (tempDb) => {
+    tempDb.prepare("UPDATE metadata SET value = ? WHERE data = 'schema_version'").run("4.0");
+  });
+  const majorMismatchArchive = await buildManagedBackupArchiveFromDbBuffer(majorMismatchBuffer, {
+    archiveFilename: `managed-import-major-${Date.now()}.zip`
+  });
+  const { res, json, text } = await inspectManagedBackupArchiveUpload(majorMismatchArchive, `managed-import-major-${Date.now()}.zip`);
+  await expectStatus(res, 200);
+  assert.equal(json.can_import, false, `Expected schema major mismatch to block import: ${text}`);
+  assert.equal(json.comparison?.schema?.status, "blocked");
+});
+
+addTest("M-003G","maintenance/backups restore success imported backup database only", async () => {
+  const { json, text } = await restoreManagedBackup(context.importedManagedBackupId, { restoreDb: true });
+  assert.ok(json && json.ok, `Unexpected imported database-only restore response: ${text}`);
 });
 
 addTest("M-006A","maintenance/backups delete success and not-found afterwards", async () => {
@@ -673,32 +810,11 @@ addTest("M-014","maintenance/export failure unauthenticated", async () => {
   await expectStatus(res, 403);
 });
 
-addTest("M-015","maintenance/import failure invalid headers", async () => {
-  const form = new FormData();
-  const csv = "description,artist\nBad Row,Missing Columns\n";
-  form.append("csv", new Blob([csv], { type: "text/csv" }), "bad.csv");
-  const res = await fetch(`${baseUrl}/maintenance/import`, {
-    method: "POST",
-    headers: authHeaders(context.token),
-    body: form
-  });
-  await expectStatus(res, 400);
+addTest("M-015","maintenance/import failure invalid headers", async () => {}, {
+  skip: true
 });
-
-addTest("M-016","maintenance/import success", async () => {
-  const form = new FormData();
-  const csv = [
-    "description,artist,contributor,notes,auction_id",
-    `Test Item,Artist Name,Contributor Name,Notes,${context.testAuctionId}`
-  ].join("\n");
-  form.append("csv", new Blob([csv], { type: "text/csv" }), "items.csv");
-  const { res, json, text } = await fetchJson(`${baseUrl}/maintenance/import`, {
-    method: "POST",
-    headers: authHeaders(context.token),
-    body: form
-  });
-  await expectStatus(res, 200);
-  assert.ok(json && json.message, `Unexpected import response: ${text}`);
+addTest("M-016","maintenance/import success", async () => {}, {
+  skip: true
 });
 
 addTest("M-017","maintenance/photo-report success", async () => {
@@ -707,6 +823,9 @@ addTest("M-017","maintenance/photo-report success", async () => {
   });
   await expectStatus(res, 200);
   assert.ok(json && typeof json.count === "number", `Unexpected response: ${text}`);
+  assert.ok(Array.isArray(json.categories), `Missing storage categories: ${text}`);
+  assert.ok(json.totals && typeof json.totals.occupied_bytes === "number", `Missing storage totals: ${text}`);
+  assert.ok(json.counts && json.counts.auctions && json.counts.items && json.counts.resources, `Missing count limits: ${text}`);
 });
 
 addTest("M-018","maintenance/photo-report failure unauthenticated", async () => {

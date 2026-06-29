@@ -833,15 +833,6 @@ document.addEventListener("DOMContentLoaded", () => {
               <h3>Auction Setup</h3>
               <ul>
                 <li>Auction Management</li>
-                <li>Add New Auction</li>
-              </ul>
-            </div>
-            <div class="menu-map-group">
-              <h3>Data</h3>
-              <ul>
-                <li>Database Backups</li>
-                <li>CSV Import / Export</li>
-                <li>Diagnostics</li>
               </ul>
             </div>
             <div class="menu-map-group">
@@ -853,12 +844,17 @@ document.addEventListener("DOMContentLoaded", () => {
             <div class="menu-map-group">
               <h3>Tools</h3>
               <ul>
-                <li>Test Data Generator</li>
                 <li>Template Editor</li>
                 <li>Image Management</li>
                 <li>Payment Management</li>
                 <li>Audit Viewer</li>
-                <li>Server Logs</li>
+              </ul>
+            </div>
+            <div class="menu-map-group">
+              <h3>Data</h3>
+              <ul>
+                <li>Database Backups</li>
+                <li>Advanced</li>
               </ul>
             </div>
           </div>
@@ -873,29 +869,44 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="section">
           <h2>Auction Management</h2>
           <ul class="compact-list">
-            <li><strong>Auction Management</strong> lists existing auctions with ID, URL tag, name, logo, item count, read-only status, and the <strong>Admin Can Set State</strong> flag.</li>
+            <li><strong>Auction Management</strong> lists existing auctions with ID, URL tag, name, logo, item count, state, and the <strong>Manage Items Can Set State</strong> flag.</li>
+            <li><strong>Auction name link:</strong> opens Manage Items in a new tab with that auction selected.</li>
+            <li><strong>Add New Auction</strong> opens a modal with fields for the display name, URL tag, and logo.</li>
             <li><strong>Generate QR Code</strong> opens a modal for a static public auction URL PNG. The root URL is editable, the <code>?auction=URL-tag</code> section is fixed, and options include foreground/background hex colours, output size, and an optional centre image from Image Management.</li>
+            <li><strong>Generate Test Data</strong> opens a row-specific modal for creating test items and bids or deleting generated bids. The selected auction and current state are displayed at the top of the modal.</li>
+            <li><strong>Test item confirmation:</strong> confirmation is required before adding items. The confirmation warns when the auction is not in <code>setup</code> or <code>locked</code>.</li>
+            <li><strong>Test bid confirmation:</strong> confirmation is required before adding bids. The confirmation warns when the auction is not in <code>live</code> or <code>settlement</code>.</li>
             <li><strong>Edit Auction</strong> opens a modal for the auction name, URL tag, logo, auction status, and the <strong>Allow admins to change the auction state</strong> checkbox.</li>
-            <li><strong>Right-click menu:</strong> right-click an auction row to open a context menu headed by the auction name. It includes <strong>Generate QR code</strong>, <strong>Edit auction</strong>, <strong>Set status</strong>, <strong>Manage Items can set state</strong>, <strong>Reset auction</strong>, <strong>Purge deleted items</strong>, and <strong>Delete auction</strong>.</li>
+            <li><strong>Right-click menu:</strong> right-click an auction row to open a context menu headed by the auction name. It includes <strong>Generate QR code</strong>, <strong>Edit auction</strong>, <strong>Generate test data/bids</strong>, <strong>Open public page</strong>, <strong>Manage Items</strong>, <strong>Set status</strong>, <strong>Manage Items can set state</strong>, <strong>Reset auction</strong>, <strong>Purge deleted items</strong>, and <strong>Delete auction</strong>.</li>
             <li><strong>Context menu status:</strong> <strong>Set status</strong> opens a submenu with the current auction status ticked. <strong>Manage Items can set state</strong> is ticked when Manage Items users are allowed to change state, and selecting it toggles that setting.</li>
             <li><strong>Unavailable actions:</strong> context menu actions are greyed out using the same rules as the action buttons, including reset only for setup or archived auctions, purge only when deleted items exist, and delete only when the auction has no items.</li>
             <li><strong>Reset Auction</strong> and <strong>Delete Auction</strong>. Reset removes all auction items, bidders, and payments. Delete removes the auction entirely.</li>
             <li><strong>Purge Deleted Items</strong> permanently removes deleted items and their photo files from the selected auction after maintenance password confirmation.</li>
-            <li><strong>Add New Auction</strong> has dedicated fields for the display name, URL tag, and logo.</li>
           </ul>
+
+          <h3>Test Data Action Icon</h3>
+          <div class="icon-legend-grid">
+            <div class="icon-legend-item">
+              <img class="icon-legend-asset" src="images/manage-auctions-action-test-data.svg" alt="Generate test data icon">
+              <strong>Generate Test Data</strong>
+              <span>Open the test item and bid tools for the auction on this row.</span>
+            </div>
+          </div>
           <img class="placeholder screenshot-small" src="images/new-maintenance-add-auction.png" alt="Manage Auctions add new auction screenshot">
           <img class="placeholder screenshot-small" src="images/new-maintenance-edit-auction.png" alt="Manage Auctions edit auction screenshot">
+          <img class="placeholder screenshot-small" src="images/maintenance-generate-test-data.png" alt="Manage Auctions test data generator screenshot">
         </div>
 
         <div class="section">
           <h2>Database Backups</h2>
           <ul class="compact-list">
             <li><strong>Create Backup</strong> opens a modal with an optional note field, live operation status, and a captured backup log.</li>
+            <li><strong>Import Backup</strong> opens a modal that uploads a managed backup zip, validates it against <code>metadata.json</code>, and previews the contents before import.</li>
             <li><strong>Server Backup Manager</strong> lists the managed backups on the server, total occupied size, and a row of action icons for each backup.</li>
             <li><strong>Backup Details</strong> opens a wide modal showing metadata, component summary, and the auctions contained in that backup.</li>
             <li><strong>Restore Backup</strong> opens a restore modal with separate checkboxes for <strong>Database</strong>, <strong>Photos</strong>, and <strong>Resources + Configs</strong>.</li>
             <li><strong>Restore Log</strong> is stored after a restore completes and can be saved to disk.</li>
-            <li><strong>Legacy Local DB Restore</strong> supports standalone <code>.db</code> backup files, with <strong>Download Current Database File</strong> alongside it.</li>
+            <li><strong>Import Preview Checks</strong> highlight imported schema and database ID differences against the live server, and imports are blocked when the schema major version differs.</li>
           </ul>
 
           <h3>Manage Auctions Backup Action Icons</h3>
@@ -925,24 +936,21 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
 
         <div class="section">
-          <h2>CSV Import / Export And Reports</h2>
+          <h2>Advanced</h2>
           <ul class="compact-list">
-            <li><strong>CSV Import / Export</strong> is a dedicated tab focused on the auction data bundle.</li>
-            <li><strong>Export CSV</strong> downloads the current bulk export archive.</li>
-            <li><strong>Import CSV</strong> uploads a file with the columns <code>description</code>, <code>artist</code>, <code>contributor</code>, <code>notes</code>, and <code>auction_id</code>.</li>
-          </ul>
-          <img class="placeholder screenshot-small" src="images/maintenance-import-export.png" alt="Manage Auctions CSV import and export screenshot">
-        </div>
-
-        <div class="section">
-          <h2>Diagnostics</h2>
-          <ul class="compact-list">
-            <li><strong>Photo Storage</strong> reports current image usage and can clean up orphaned images.</li>
+            <li><strong>Storage Report</strong> reports current image usage and can clean up orphaned images.</li>
             <li><strong>Run Detailed Integrity Check</strong> produces a detailed report across workflow, schema, and data-consistency checks.</li>
             <li><strong>Apply Safe Fixes</strong> becomes available when the integrity report includes fixable problems.</li>
             <li><strong>Restart Server</strong> is a maintenance-only command for the backend service.</li>
+            <li><strong>Export Data:</strong> <strong>Export CSV</strong> downloads the current bulk export archive.</li>
+            <li><strong>Message Cache status:</strong> shows whether messaging is enabled, how many messages are stored, estimated cache size, configured limits, and persistence state.</li>
+            <li><strong>Message Cache actions:</strong> refresh the status, export messages as CSV for record keeping, or clear all stored messages after confirmation.</li>
+            <li><strong>Message item references:</strong> Manage Auctions has no selected auction context, so the messaging item-search control is not shown on this page.</li>
+            <li><strong>Server Logs:</strong> refresh logs inline, enable auto-refresh, or open the dedicated pop-out log viewer.</li>
           </ul>
+          <img class="placeholder screenshot-small" src="images/maintenance-import-export.png" alt="Manage Auctions CSV export screenshot">
           <img class="placeholder screenshot-small" src="images/maintenance-diagnostics.png" alt="Manage Auctions diagnostics screenshot">
+          <img class="placeholder screenshot-small" src="images/maintenance-server-logs.png" alt="Manage Auctions server logs screenshot">
         </div>
 
         <div class="section">
@@ -978,34 +986,18 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
 
         <div class="section">
-          <h2>Messaging</h2>
+          <h2>Templates, Images, Payments, And Audit</h2>
           <ul class="compact-list">
-            <li><strong>Status:</strong> shows whether messaging is enabled, how many messages are held, and the estimated cache size.</li>
-            <li><strong>Limits:</strong> shows the configured message count, cache size, and character limits.</li>
-            <li><strong>Persistence:</strong> shows whether the message cache has been loaded from disk and whether a save is pending. The persistence file location is set in backend <code>config.json</code>.</li>
-            <li><strong>Item references:</strong> Manage Auctions has no selected auction context, so the messaging item-search control is not shown on this page.</li>
-            <li><strong>Export Messages CSV:</strong> downloads the current message cache for record keeping, including attention read and acknowledgement fields.</li>
-            <li><strong>Clear Message Cache:</strong> removes all stored messages.</li>
-          </ul>
-        </div>
-
-        <div class="section">
-          <h2>Templates, Images, Payments, Audit, And Logs</h2>
-          <ul class="compact-list">
-            <li><strong>Test Data Generator:</strong> create test items, create test bids, or clear generated bids for rehearsals.</li>
             <li><strong>Template Editor:</strong> load, validate, save, or reset <code>pptx</code>, <code>card</code>, and <code>slip</code> generator configs.</li>
             <li><strong>Image Management:</strong> upload shared resource images and remove unneeded files.</li>
             <li><strong>Payment Management:</strong> review enabled payment methods and test callback URLs.</li>
             <li><strong>Audit Viewer:</strong> filter by ID or event type, then download the filtered audit CSV.</li>
-            <li><strong>Server Logs:</strong> refresh logs inline, enable auto-refresh, or use the dedicated pop-out log viewer.</li>
           </ul>
           <p>See the <a href="pptx_guide.html">PowerPoint Template Guide</a> for the slide and card template details and the underlying generator config files.</p>
-          <img class="placeholder screenshot-small" src="images/maintenance-generate-test-data.png" alt="Manage Auctions test data generator screenshot">
           <img class="placeholder screenshot-small" src="images/maintenance-pptx-template-editor.png" alt="Manage Auctions template editor screenshot">
           <img class="placeholder screenshot-small" src="images/maintenance-image-manager.png" alt="Manage Auctions image management screenshot">
           <img class="placeholder screenshot-small" src="images/maintenance-payment-processing.png" alt="Manage Auctions payment management screenshot">
           <img class="placeholder screenshot-small" src="images/maintenance-audit-log-viewer.png" alt="Manage Auctions audit viewer screenshot">
-          <img class="placeholder screenshot-small" src="images/maintenance-server-logs.png" alt="Manage Auctions server logs screenshot">
         </div>
 
         <h1>Public Entry</h1>
