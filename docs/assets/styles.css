@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@700&family=Fraunces:opsz,wght@9..144,400;9..144,700&family=Nunito+Sans:wght@500&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 :root {
   --bg: #0f1726;
@@ -9,6 +9,9 @@
   --accent: #ff9f1c;
   --accent-2: #2ec4b6;
   --accent-3: #d0f4de;
+  --brand-mane: #c8b8ff;
+  --brand-bid: #ff9ccb;
+  --brand-tagline: #c2ccdc;
   --outline: rgba(255, 255, 255, 0.08);
   --shadow: 0 20px 45px rgba(5, 10, 25, 0.45);
 }
@@ -59,10 +62,66 @@ header::after {
   margin-bottom: 60px;
 }
 
-.brand {
+.brand-lockup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.brand-lockup--inline {
+  align-items: baseline;
+  display: inline-flex;
+  flex-direction: row;
+  gap: 0.45rem;
+}
+
+.app-wordmark {
+  background: linear-gradient(100deg, var(--brand-mane), var(--brand-bid));
+  background-clip: text;
+  color: var(--brand-mane);
+  font-family: "Fredoka", "Trebuchet MS", sans-serif;
   font-weight: 700;
+  letter-spacing: -0.025em;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.app-tagline {
+  color: var(--brand-tagline);
+  font-family: "Nunito Sans", "Segoe UI", sans-serif;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.brand {
   font-size: 1.2rem;
-  letter-spacing: 0.02em;
+}
+
+.brand .app-wordmark {
+  font-size: 1.2rem;
+}
+
+.brand .app-tagline {
+  font-size: 0.72rem;
+}
+
+.badge .app-wordmark,
+.brand-lockup--inline .app-wordmark {
+  font-size: 1em;
+}
+
+.badge .app-tagline,
+.brand-lockup--inline .app-tagline {
+  color: inherit;
+  font-size: 0.78em;
+}
+
+@media (forced-colors: active) {
+  .app-wordmark {
+    background: none;
+    -webkit-text-fill-color: currentColor;
+  }
 }
 
 .nav-links {

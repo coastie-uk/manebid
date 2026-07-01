@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Fredoka:wght@700&family=Nunito+Sans:wght@500&display=swap");
+
 :root {
     --page-bg: #f5f7fb;
     --panel-bg: rgba(255, 255, 255, 0.96);
@@ -10,6 +12,9 @@
     --accent-strong: #0b4ecc;
     --danger: #b42318;
     --success: #1f6b3c;
+    --brand-mane: #6741b8;
+    --brand-bid: #b83280;
+    --brand-tagline: #536176;
     --content-width: 720px;
 }
 
@@ -25,6 +30,9 @@
     --accent-strong: #4a8ef8;
     --danger: #ff8c86;
     --success: #9fe3bc;
+    --brand-mane: #c8b8ff;
+    --brand-bid: #ff9ccb;
+    --brand-tagline: #b8c5d8;
 }
 
 *,
@@ -46,6 +54,38 @@ body {
         radial-gradient(circle at top left, rgba(15, 98, 254, 0.08), transparent 26%),
         radial-gradient(circle at top right, rgba(16, 185, 129, 0.07), transparent 20%),
         linear-gradient(180deg, #f7f9fc 0%, var(--page-bg) 100%);
+}
+
+.brand-lockup {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.app-wordmark {
+    background: linear-gradient(100deg, var(--brand-mane), var(--brand-bid));
+    background-clip: text;
+    color: var(--brand-mane);
+    font-family: "Fredoka", "Trebuchet MS", sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.app-tagline {
+    color: var(--brand-tagline);
+    font-family: "Nunito Sans", "Segoe UI", sans-serif;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+@media (forced-colors: active) {
+    .app-wordmark {
+        background: none;
+        -webkit-text-fill-color: currentColor;
+    }
 }
 
 img {
@@ -489,6 +529,20 @@ input[type="reset"]:disabled {
     color: var(--muted);
     font-size: 0.82rem;
     text-align: center;
+}
+
+.page-footer .brand-lockup {
+    align-items: center;
+    margin-bottom: 7px;
+}
+
+.page-footer .app-wordmark {
+    font-size: 1.15rem;
+    line-height: 1;
+}
+
+.page-footer .app-tagline {
+    font-size: 0.62rem;
 }
 
 @media (max-width: 860px) {

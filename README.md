@@ -1,4 +1,6 @@
-# convention-auction
+# ManeBid
+
+**Convention Auction Manager**
 
 Web platform to collect, manage, present, record bids and take payment for items at the kind of auctions often encountered at fan conventions. The use case may vary slightly from con to con, but generally looks like this:
 

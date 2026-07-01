@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Fredoka:wght@700&family=Nunito+Sans:wght@500&display=swap");
+
 /* Admin Page Styles */
 
 :root {
@@ -12,6 +14,9 @@
     --admin-accent-strong: #0b4ecc;
     --admin-danger: #b42318;
     --admin-warm: #9a4521;
+    --brand-mane: #6741b8;
+    --brand-bid: #b83280;
+    --brand-tagline: #536176;
 }
 
 :root[data-theme="dark"] {
@@ -26,6 +31,62 @@
     --admin-accent-strong: #4a8ef8;
     --admin-danger: #ff8c86;
     --admin-warm: #f5bc8a;
+    --brand-mane: #c8b8ff;
+    --brand-bid: #ff9ccb;
+    --brand-tagline: #b8c5d8;
+}
+
+.brand-lockup {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.app-wordmark {
+    background: linear-gradient(100deg, var(--brand-mane), var(--brand-bid));
+    background-clip: text;
+    color: var(--brand-mane);
+    font-family: "Fredoka", "Trebuchet MS", sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.app-wordmark--inline {
+    font-size: 1em;
+}
+
+.app-tagline {
+    color: var(--brand-tagline);
+    font-family: "Nunito Sans", "Segoe UI", sans-serif;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.about-branding {
+    margin: 6px 0 0;
+}
+
+.about-branding .app-tagline,
+.about-context {
+    display: block;
+}
+
+.about-branding .app-tagline {
+    font-size: 0.72rem;
+}
+
+.about-context {
+    margin-top: 5px;
+}
+
+@media (forced-colors: active) {
+    .app-wordmark {
+        background: none;
+        -webkit-text-fill-color: currentColor;
+    }
 }
 
 body {
@@ -83,6 +144,17 @@ h2 {
     flex-wrap: wrap;
     gap: 8px;
     align-items: center;
+}
+
+.top-bar-wordmark {
+    align-items: center;
+    display: inline-flex;
+    flex: 0 0 auto;
+    font-size: 1.45rem;
+    line-height: 1;
+    margin: 0 6px;
+    min-height: 40px;
+    white-space: nowrap;
 }
 
 .menu-group--right {
@@ -1920,6 +1992,14 @@ form button:hover {
         align-items: stretch;
     }
 
+    .top-bar-wordmark {
+        grid-column: 1 / -1;
+        justify-content: flex-start;
+        margin: 0;
+        min-height: 30px;
+        padding: 2px 6px;
+    }
+
     .menu-group--right {
         margin-left: 0;
     }
@@ -2369,6 +2449,22 @@ footer {
 .login-container h2 {
     text-align: center;
     margin-bottom: 20px;
+}
+
+.login-container .brand-lockup {
+    align-items: center;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.login-container .brand-lockup .app-wordmark {
+    font-size: 2rem;
+    line-height: 1;
+    margin: 0;
+}
+
+.login-container .brand-lockup .app-tagline {
+    font-size: 0.72rem;
 }
 
 .login-container input,

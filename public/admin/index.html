@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin - Charity Auction</title>
+    <title>Manage Items | ManeBid — Convention Auction Manager</title>
     <script>
         (function bootstrapOperatorTheme() {
             const getBrowserPreferredTheme = () => window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light";
@@ -35,7 +35,11 @@
     <main>
   <section id="login-section" style="display: none;">
             <div class="login-container">
-                <h2>Admin Login</h2>
+                <div class="brand-lockup">
+                    <h2 class="app-wordmark">ManeBid</h2>
+                    <p class="app-tagline">Convention Auction Manager</p>
+                </div>
+                <h3>Admin Login</h3>
                 <input type="text" id="admin-username" placeholder="Username" autocomplete="username">
                 <input type="password" id="admin-password" placeholder="Enter Password">
                 <button id="login-button">Login</button>
@@ -47,6 +51,7 @@
         <section id="admin-section" style="display: none;">
             <div class="sticky-controls">
                 <div class="menu-bar">
+                    <span class="top-bar-wordmark app-wordmark">ManeBid</span>
 
                     <details class="menu-group">
                         <summary class="menu-trigger">Open</summary>
@@ -527,8 +532,8 @@
             <div class="app-modal-card">
                 <div class="app-modal-header">
                     <div>
-                        <h3>About Convention Auction</h3>
-                        <p>Current software and database details for this installation.</p>
+                        <h3>About <span class="app-wordmark app-wordmark--inline">ManeBid</span></h3>
+                        <p class="about-branding"><span class="app-tagline">Convention Auction Manager</span><span class="about-context">Current software and database details for this installation.</span></p>
                     </div>
                     <button id="close-about-modal" type="button" class="app-modal-close" aria-label="Close about dialog">Close</button>
                 </div>

@@ -28,7 +28,7 @@ STAGING_DIR=""
 
 usage() {
   cat <<'USAGE'
-Convention Auction backend installer
+ManeBid — Convention Auction Manager backend installer
 
 Usage:
   ./backend/install-backend.sh [--dry-run] [--help]
@@ -885,7 +885,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
   RUN_MODE="systemd"
   SECRET_KEY="<generated at install time>"
 else
-  info "Convention Auction backend installer"
+  info "ManeBid — Convention Auction Manager backend installer"
   info "Press Enter to accept each default."
   BACKEND_DIR="$(prompt_value "Backend install directory" "$DEFAULT_BACKEND_DIR")"
   ENV_DIR="$(prompt_value "Secure env directory" "$DEFAULT_ENV_DIR")"

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Live Feed - Auction</title>
+  <title>Manage Collections | ManeBid — Convention Auction Manager</title>
   <script>
     (function bootstrapOperatorTheme() {
       const getBrowserPreferredTheme = () => window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light";
@@ -559,6 +559,7 @@
     <div class="page-shell">
       <div class="sticky-controls">
         <div class="menu-bar">
+          <span class="top-bar-wordmark app-wordmark">ManeBid</span>
 
           <details class="menu-group">
             <summary class="menu-trigger">Open</summary>
@@ -718,8 +719,8 @@
       <div class="app-modal-card">
         <div class="app-modal-header">
           <div>
-            <h3>About Convention Auction</h3>
-            <p>Current software and database details for this installation.</p>
+            <h3>About <span class="app-wordmark app-wordmark--inline">ManeBid</span></h3>
+            <p class="about-branding"><span class="app-tagline">Convention Auction Manager</span><span class="about-context">Current software and database details for this installation.</span></p>
           </div>
           <button id="close-about-modal" type="button" class="app-modal-close" aria-label="Close about dialog">Close</button>
         </div>

@@ -1,4 +1,6 @@
-**Deployment Guide**
+# ManeBid — Convention Auction Manager
+
+## Deployment Guide
 
 This guide explains how to deploy the Auction App backend and frontend using Node.js, Apache, PM2, and Let's Encrypt for free HTTPS certificates. It assumes an Ubuntu comamnd style (developed on Mint & Ubuntu).
 

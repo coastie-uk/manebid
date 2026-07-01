@@ -1,7 +1,7 @@
 {
-    "name": "convention-auction-backend",
-    "version": "3.0.2-dev05",
-    "description": "Backend for Convention Auction Submission Management",
+    "name": "manebid-backend",
+    "version": "3.0.2-dev06",
+    "description": "Backend for ManeBid — Convention Auction Manager",
     "main": "backend.js",
     "scripts": {
         "start": "node backend.js",

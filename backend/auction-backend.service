@@ -1,5 +1,5 @@
 [Unit]
-Description=Convention Auction Backend
+Description=ManeBid — Convention Auction Manager Backend
 After=network-online.target
 Wants=network-online.target
 
