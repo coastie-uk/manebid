@@ -7,40 +7,152 @@
   <link rel="stylesheet" href="assets/styles.css">
 
 <style>
-  .doc-content img.placeholder {
+  .guide-main {
+    max-width: 1920px;
+    margin: 0 auto;
+    padding-inline: clamp(16px, 3vw, 56px);
+  }
+
+  .guide-layout {
+    display: grid;
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+    gap: clamp(28px, 4vw, 72px);
+    align-items: start;
+  }
+
+  .guide-toc {
+    position: sticky;
+    top: 24px;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+  }
+
+  .guide-toc h2 {
+    font-family: "Fraunces", serif;
+    font-size: 1.25rem;
+    margin: 0 0 14px;
+  }
+
+  .doc-content {
+    min-width: 0;
+  }
+
+  .doc-content > h1 {
+    scroll-margin-top: 24px;
+    margin-top: 64px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--outline);
+  }
+
+  .doc-content > h1:first-child {
+    margin-top: 0;
+  }
+
+  .doc-content .section > p,
+  .doc-content .section > ul,
+  .doc-content .section-copy > p,
+  .doc-content .section-copy > ul,
+  .doc-content > p {
+    max-width: 78ch;
+  }
+
+  .guide-figure {
+    margin: 20px 0 28px;
+    min-width: 0;
+  }
+
+  .guide-figure a {
     display: block;
-    margin: 18px 0 28px;
-    max-width: 100%;
+    border-radius: 16px;
+    outline-offset: 4px;
+  }
+
+  .guide-screenshot {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+    background: #0b1220;
     border-radius: 16px;
     border: 1px solid rgba(255, 255, 255, 0.12);
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+    transition: border-color 0.2s ease, transform 0.2s ease;
   }
 
-  .doc-content img.screenshot-large {
-    width: auto;
-    height: auto;
-    max-width: 100%;
-    object-fit: contain;
+  .guide-figure a:hover .guide-screenshot,
+  .guide-figure a:focus-visible .guide-screenshot {
+    border-color: rgba(46, 196, 182, 0.8);
+    transform: translateY(-2px);
   }
 
-  .doc-content img.screenshot-small {
-    width: auto;
-    max-width: 680px;
-    height: auto;
-    object-fit: contain;
+  .screenshot-overview {
+    width: 100%;
   }
 
-  .toc-links {
-    columns: 2;
-    column-gap: 24px;
-    padding-left: 18px;
-    color: var(--muted);
+  .screenshot-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+    gap: 22px;
+    margin: 20px 0 32px;
+  }
+
+  .screenshot-gallery .guide-figure {
+    display: flex;
+    flex-direction: column;
     margin: 0;
   }
 
+  .screenshot-gallery .guide-screenshot {
+    aspect-ratio: 16 / 9;
+    max-height: 310px;
+  }
+
+  .screenshot-gallery-single {
+    grid-template-columns: minmax(0, 720px);
+  }
+
+  .guide-figure figcaption {
+    color: var(--muted);
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin-top: 10px;
+  }
+
+  .guide-figure figcaption strong {
+    color: var(--text);
+  }
+
+  .toc-links {
+    display: grid;
+    gap: 4px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
   .toc-links li {
-    break-inside: avoid;
-    margin-bottom: 8px;
+    margin: 0;
+  }
+
+  .toc-links a {
+    display: block;
+    color: var(--muted);
+    border-left: 3px solid transparent;
+    border-radius: 0 8px 8px 0;
+    padding: 8px 10px;
+    transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+  }
+
+  .toc-links a:hover,
+  .toc-links a:focus-visible {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .toc-links a.active,
+  .toc-links a[aria-current="location"] {
+    color: var(--text);
+    background: rgba(46, 196, 182, 0.12);
+    border-left-color: var(--accent-2);
   }
 
   .menu-map {
@@ -190,9 +302,148 @@
     text-align: left;
   }
 
+  .screenshot-dialog {
+    width: min(96vw, 1680px);
+    max-width: none;
+    max-height: 96vh;
+    padding: 0;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--outline);
+    border-radius: 18px;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+  }
+
+  .screenshot-dialog::backdrop {
+    background: rgba(2, 6, 15, 0.88);
+    backdrop-filter: blur(4px);
+  }
+
+  .screenshot-dialog-shell {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    max-height: 96vh;
+  }
+
+  .screenshot-dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--outline);
+  }
+
+  .screenshot-dialog-caption {
+    margin: 0;
+    font-weight: 600;
+  }
+
+  .screenshot-dialog-controls {
+    display: flex;
+    gap: 8px;
+    flex: 0 0 auto;
+  }
+
+  .screenshot-dialog button {
+    min-width: 42px;
+    min-height: 42px;
+    padding: 8px 12px;
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--outline);
+    border-radius: 10px;
+    cursor: pointer;
+    font: inherit;
+  }
+
+  .screenshot-dialog button:hover,
+  .screenshot-dialog button:focus-visible {
+    background: rgba(46, 196, 182, 0.18);
+    border-color: rgba(46, 196, 182, 0.65);
+  }
+
+  .screenshot-dialog button:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+
+  .screenshot-dialog-stage {
+    display: grid;
+    place-items: center;
+    min-height: 0;
+    padding: 18px;
+    overflow: auto;
+    background: #070c16;
+  }
+
+  .screenshot-dialog-image {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    max-height: calc(96vh - 94px);
+    object-fit: contain;
+  }
+
+  @media (min-width: 1380px) {
+    .media-section {
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(440px, 1.1fr);
+      column-gap: clamp(28px, 3vw, 52px);
+      align-items: start;
+    }
+
+    .media-section > h2 {
+      grid-column: 1 / -1;
+    }
+
+    .media-section > .screenshot-gallery-single {
+      margin-top: 0;
+    }
+  }
+
+  @media (max-width: 1099px) {
+    .guide-layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .guide-toc {
+      position: static;
+      max-height: none;
+    }
+
+    .toc-links {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
   @media (max-width: 720px) {
     .toc-links {
-      columns: 1;
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .screenshot-gallery {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .screenshot-dialog-header {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .screenshot-dialog-controls {
+      width: 100%;
+    }
+
+    .screenshot-dialog button {
+      flex: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .guide-screenshot,
+    .toc-links a {
+      transition: none;
     }
   }
 </style>
@@ -201,7 +452,44 @@
 <script>
 document.addEventListener("DOMContentLoaded", () => {
   const tocTarget = document.querySelector("#toc-links");
+  const content = document.querySelector(".doc-content");
+  const chapterOrder = [
+    "Logging In",
+    "Manage Auctions",
+    "Manage Items",
+    "Manage Payments",
+    "Manage Collections",
+    "Slideshow",
+    "Public Entry",
+    "Operator Messaging",
+    "Item Slip Printing",
+    "Function / State Quick Reference"
+  ];
+
+  if (content) {
+    const chapterHeaders = Array.from(content.children).filter((element) => element.matches("h1"));
+    const chapters = new Map();
+
+    chapterHeaders.forEach((header, index) => {
+      const nextHeader = chapterHeaders[index + 1] || null;
+      const nodes = [];
+      let node = header;
+
+      while (node && node !== nextHeader) {
+        const currentNode = node;
+        node = node.nextSibling;
+        nodes.push(currentNode);
+      }
+      chapters.set(header.textContent.trim(), nodes);
+    });
+
+    chapterOrder.forEach((title) => {
+      chapters.get(title)?.forEach((node) => content.appendChild(node));
+    });
+  }
+
   const headers = Array.from(document.querySelectorAll(".doc-content h1"));
+  const tocLinks = [];
 
   headers.forEach((header) => {
     const slug = header.textContent
@@ -219,7 +507,111 @@ document.addEventListener("DOMContentLoaded", () => {
       link.textContent = header.textContent.trim();
       li.appendChild(link);
       tocTarget.appendChild(li);
+      tocLinks.push(link);
     }
+  });
+
+  const setActiveTocLink = (id) => {
+    tocLinks.forEach((link) => {
+      const active = link.getAttribute("href") === `#${id}`;
+      link.classList.toggle("active", active);
+      if (active) {
+        link.setAttribute("aria-current", "location");
+      } else {
+        link.removeAttribute("aria-current");
+      }
+    });
+  };
+
+  if ("IntersectionObserver" in window) {
+    const sectionObserver = new IntersectionObserver((entries) => {
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      if (visible[0]) {
+        setActiveTocLink(visible[0].target.id);
+      }
+    }, { rootMargin: "-15% 0px -70% 0px", threshold: 0 });
+
+    headers.forEach((header) => sectionObserver.observe(header));
+  }
+
+  if (headers[0]) {
+    setActiveTocLink(headers[0].id);
+  }
+
+  const dialog = document.querySelector("#screenshot-dialog");
+  if (!dialog || typeof dialog.showModal !== "function") {
+    return;
+  }
+
+  const dialogImage = dialog.querySelector(".screenshot-dialog-image");
+  const dialogCaption = dialog.querySelector(".screenshot-dialog-caption");
+  const previousButton = dialog.querySelector("[data-dialog-previous]");
+  const nextButton = dialog.querySelector("[data-dialog-next]");
+  const closeButton = dialog.querySelector("[data-dialog-close]");
+  let galleryLinks = [];
+  let currentIndex = 0;
+  let lastTrigger = null;
+
+  const showScreenshot = (index) => {
+    currentIndex = index;
+    const link = galleryLinks[currentIndex];
+    const figure = link.closest(".guide-figure");
+    const caption = figure?.querySelector("figcaption")?.textContent.trim() || link.querySelector("img")?.alt || "Screenshot";
+    dialogImage.src = link.href;
+    dialogImage.alt = link.querySelector("img")?.alt || caption;
+    dialogCaption.textContent = caption;
+    previousButton.disabled = galleryLinks.length < 2;
+    nextButton.disabled = galleryLinks.length < 2;
+  };
+
+  const moveScreenshot = (offset) => {
+    if (galleryLinks.length < 2) {
+      return;
+    }
+    const nextIndex = (currentIndex + offset + galleryLinks.length) % galleryLinks.length;
+    showScreenshot(nextIndex);
+  };
+
+  document.querySelectorAll(".screenshot-link").forEach((link) => {
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      const gallery = link.closest("[data-gallery]");
+      galleryLinks = gallery
+        ? Array.from(gallery.querySelectorAll(".screenshot-link"))
+        : [link];
+      currentIndex = galleryLinks.indexOf(link);
+      lastTrigger = link;
+      showScreenshot(currentIndex);
+      dialog.showModal();
+      closeButton.focus();
+    });
+  });
+
+  previousButton.addEventListener("click", () => moveScreenshot(-1));
+  nextButton.addEventListener("click", () => moveScreenshot(1));
+  closeButton.addEventListener("click", () => dialog.close());
+
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) {
+      dialog.close();
+    }
+  });
+
+  dialog.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      moveScreenshot(-1);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      moveScreenshot(1);
+    }
+  });
+
+  dialog.addEventListener("close", () => {
+    dialogImage.removeAttribute("src");
+    lastTrigger?.focus();
   });
 });
 </script>
@@ -246,14 +638,17 @@ document.addEventListener("DOMContentLoaded", () => {
     </div>
   </header>
 
-  <main>
+  <main class="guide-main">
     <section class="reveal show">
       <div class="section-title"></div>
-      <div class="panel">
-        <h3>Jump to section</h3>
-        <ul class="toc-links" id="toc-links"></ul>
-      </div>
-      <div class="doc-content">
+      <div class="guide-layout">
+        <aside class="guide-toc panel" aria-labelledby="guide-toc-heading">
+          <h2 id="guide-toc-heading">Jump to section</h2>
+          <nav aria-label="User guide sections">
+            <ul class="toc-links" id="toc-links"></ul>
+          </nav>
+        </aside>
+        <div class="doc-content">
 
         <h1>Logging In</h1>
 
@@ -261,7 +656,7 @@ document.addEventListener("DOMContentLoaded", () => {
           <h2>Shared Operator Sign-In</h2>
           <p>Operator pages use a shared login session. Sign in once, then move between the pages your account can access from the <strong>Open</strong> menu.</p>
           <ul class="compact-list">
-            <li><strong>Go directly to an operator page:</strong> open <code>/admin</code>, <code>/cashier</code>, <code>/cashier/live-feed.html</code>, <code>/maint</code>, or <code>/slideshow</code>. If there is no active session, the page redirects to the shared login screen.</li>
+            <li><strong>Go directly to an operator page:</strong> open <code>/admin</code>, <code>/cashier</code>, <code>/maint</code>, or <code>/slideshow</code>. If there is no active session, the page redirects to the shared login screen.</li>
             <li><strong>Go straight to login:</strong> open <code>/login.html</code>, sign in, and the system opens the first page available to your account.</li>
             <li><strong>Use the public screen shortcut:</strong> from the public item-entry screen, click the auction picture or logo to open <code>/admin</code>.</li>
           </ul>
@@ -275,6 +670,14 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="section">
           <h2>Messaging Between Staff</h2>
           <p>Manage Items, Manage Payments, Manage Collections, and Manage Auctions include a message icon in the top status bar. The icon changes when unread messages are waiting.</p>
+          <div data-gallery="operator-messaging">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/messaging.png">
+                <img class="guide-screenshot screenshot-overview" src="screenshots/messaging.png" alt="Operator messaging screen showing the user list, conversation history, message entry, and item reference controls" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Operator messaging:</strong> select a user, review the conversation, and send a standard or attention message.</figcaption>
+            </figure>
+          </div>
           <ul class="compact-list">
             <li><strong>Open messages:</strong> click the message icon to open the conversation screen.</li>
             <li><strong>User list:</strong> users with access to at least one management page are listed. A green indicator means the user has checked messaging recently; offline users show an approximate last-seen time. An unread count appears beside users with waiting messages.</li>
@@ -286,9 +689,6 @@ document.addEventListener("DOMContentLoaded", () => {
             <li><strong>Read indicator:</strong> messages you sent show when the recipient has opened that conversation, and attention messages show when they were acknowledged.</li>
             <li><strong>Item reference:</strong> on pages with a selected auction, use <strong>Insert item</strong> to search the current auction and insert an item reference. On Manage Items, clicking that reference jumps to the item.</li>
           </ul>
-          <div class="doc-note">
-            <strong>Message retention:</strong> operator messages are held in backend memory and saved to the configured message persistence file, so they normally survive backend restarts. The backend checks the stored database ID and message-file checksum on startup; if they do not match, it renames the old file, starts a new message history, and records this in the startup log. Online/offline presence still resets when the backend restarts.
-          </div>
         </div>
 
         <h1 id="admin-panel">Manage Items</h1>
@@ -296,7 +696,14 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="section">
           <h2>Overview</h2>
           <p>The page provides item entry, item editing, live bidding controls, export and print workflows.</p>
-          <img class="placeholder screenshot-large" src="images/admin-overview.png" alt="Manage Items overview screenshot">
+          <div data-gallery="manage-items-overview">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-items/01-item-list-settlement.png">
+                <img class="guide-screenshot screenshot-overview" src="screenshots/manage-items/01-item-list-settlement.png" alt="Manage Items settlement view showing the item table, auction status, totals, and row actions" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Manage Items overview:</strong> the settlement item list with status, bidder, price, and action columns.</figcaption>
+            </figure>
+          </div>
         </div>
 
         <div class="section">
@@ -465,11 +872,55 @@ document.addEventListener("DOMContentLoaded", () => {
               <span>The lot has been marked as collected.</span>
             </div>
           </div>
-          <img class="placeholder screenshot-small" src="images/admin-edit.png" alt="Manage Items item action screenshot">
+          <div class="screenshot-gallery" data-gallery="manage-items-actions">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-items/02-item-view-settlement.png">
+                <img class="guide-screenshot" src="screenshots/manage-items/02-item-view-settlement.png" alt="Read-only item view during settlement with item details and photograph" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>View item:</strong> item details become read-only when editing is unavailable.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-items/03-item-history-modal.png">
+                <img class="guide-screenshot" src="screenshots/manage-items/03-item-history-modal.png" alt="Item History modal listing dated changes to an auction item" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Item history:</strong> review the audit trail for the selected item.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-items/07-item-list-setup.png">
+                <img class="guide-screenshot" src="screenshots/manage-items/07-item-list-setup.png" alt="Manage Items setup view showing item rows and editing actions" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Setup actions:</strong> editing, duplication, moving, printing, and deletion controls are available as permitted.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-items/08-create-item-page.png">
+                <img class="guide-screenshot" src="screenshots/manage-items/08-create-item-page.png" alt="Create item page with description, contributor, creator, notes, and photo controls" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Create an item:</strong> enter the item details and optionally add a photograph.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-items/10-edit-item-page.png">
+                <img class="guide-screenshot" src="screenshots/manage-items/10-edit-item-page.png" alt="Edit item page with populated item details and photo controls" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Edit an item:</strong> update details, manage its photograph, or delete the item.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-items/11-crop-image-modal.png">
+                <img class="guide-screenshot" src="screenshots/manage-items/11-crop-image-modal.png" alt="Crop Image modal with an adjustable crop area around an item photograph" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Crop a photograph:</strong> adjust the retained area before applying the crop.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-items/12-move-item-controls.png">
+                <img class="guide-screenshot" src="screenshots/manage-items/12-move-item-controls.png" alt="Manage Items row with controls for choosing a destination auction and item position" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Move an item:</strong> choose the destination auction and position from the expanded row controls.</figcaption>
+            </figure>
+          </div>
         </div>
 
-        <div class="section">
+        <div class="section media-section">
           <h2>Import Items</h2>
+          <div class="section-copy">
           <p><strong>Operations &gt; Import Items...</strong> opens a modal that previews a CSV before any items are created. The CSV must include <code>description</code>, <code>artist</code>, <code>contributor</code>, and <code>notes</code> columns; extra columns are ignored.</p>
           <ul class="compact-list">
             <li>The browser parses the CSV and checks that the required columns are present.</li>
@@ -478,6 +929,15 @@ document.addEventListener("DOMContentLoaded", () => {
             <li>Each row can have an image selected before import. A small preview appears in the row, but the image is not uploaded until <strong>Import Selected</strong> is pressed.</li>
             <li>The import uses the same item creation workflow as <strong>Create New Item...</strong>, so item numbers and photo processing follow the normal rules.</li>
           </ul>
+          </div>
+          <div class="screenshot-gallery screenshot-gallery-single" data-gallery="manage-items-import">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-items/09-import-items-modal.png">
+                <img class="guide-screenshot" src="screenshots/manage-items/09-import-items-modal.png" alt="Import Items modal showing CSV selection, row validation, and import controls" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Import Items:</strong> validate and select CSV rows before creating items.</figcaption>
+            </figure>
+          </div>
         </div>
 
         <div class="section">
@@ -490,13 +950,19 @@ document.addEventListener("DOMContentLoaded", () => {
             <li><strong>Safety rule:</strong> a bid cannot be retracted if doing so would push the bidder into a negative balance after payments. In that case a refund must be recorded first.</li>
             <li><strong>Editing lock:</strong> once an item has a bid, edit and move actions are blocked even if the auction is still otherwise editable.</li>
           </ul>
-          <img class="placeholder screenshot-small" src="images/admin-bid-ctrl.png" alt="Manage Items bid control icons screenshot">
-          <img class="placeholder screenshot-small" src="images/admin-bidding.png" alt="Manage Items record bid workflow screenshot">
-          <img class="placeholder screenshot-small" src="images/new-admin-retract.png" alt="Manage Items bid retraction preview screenshot">
+          <div class="screenshot-gallery screenshot-gallery-single" data-gallery="manage-items-bids">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-items/05-record-bid-modal.png">
+                <img class="guide-screenshot" src="screenshots/manage-items/05-record-bid-modal.png" alt="Record Bid modal with known paddles, bidder details, hammer price, and record controls" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Record Bid:</strong> select a known paddle or enter bidder details and the hammer price.</figcaption>
+            </figure>
+          </div>
         </div>
 
-        <div class="section">
+        <div class="section media-section">
           <h2>Bidder Names</h2>
+          <div class="section-copy">
           <p>Bidder names are optional convenience information. Paddle number remains the main bidder identifier, and multiple paddle numbers may share the same name.</p>
           <ul class="compact-list">
             <li><strong>During bid entry:</strong> enter a name if useful. A non-empty name updates the stored name for that paddle; leaving the field empty does not clear an existing name.</li>
@@ -505,11 +971,20 @@ document.addEventListener("DOMContentLoaded", () => {
             <li><strong>Show deleted items:</strong> use <strong>View &gt; Show deleted items</strong>.  Deleted items remain hidden in other views and reports.</li>
             <li><strong>Archived auctions:</strong> bidder names are read-only once the auction is archived.</li>
           </ul>
-          <img class="placeholder screenshot-small" src="images/new-admin-manage-bidders.png" alt="Manage Items manage bidders screenshot">
+          </div>
+          <div class="screenshot-gallery screenshot-gallery-single" data-gallery="manage-items-bidders">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-items/04-manage-bidders-modal.png">
+                <img class="guide-screenshot" src="screenshots/manage-items/04-manage-bidders-modal.png" alt="Manage Bidders modal listing paddle numbers with editable bidder names" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Manage Bidders:</strong> add, update, or clear the optional name associated with a paddle.</figcaption>
+            </figure>
+          </div>
         </div>
 
-        <div class="section">
+        <div class="section media-section">
           <h2>Export Panel</h2>
+          <div class="section-copy">
           <p><strong>Export...</strong> opens a dedicated panel. The header shows the current auction, the main form switches by export type, and PowerPoint jobs expose inline progress, cancel, and download controls.</p>
           <ul class="compact-list">
             <li><strong>Auction Slides</strong> and <strong>Item Cards</strong> create PPTX files. When a PPTX job is queued or running, the panel shows the current job status and offers <strong>Cancel PPTX Export</strong> or <strong>Download Latest PPTX</strong>.</li>
@@ -521,7 +996,15 @@ document.addEventListener("DOMContentLoaded", () => {
             <li><strong>Selection modes</strong> for slides, cards, and slips are <strong>All items</strong>, <strong>Unexported / Out of date items</strong> (or <strong>Unprinted / Out of date items</strong> for slips), and <strong>Item number range</strong> such as <code>1,3,4-9</code>.</li>
             <li><strong>Reset Tracking</strong> is available for <strong>slides</strong>, <strong>cards</strong>, and <strong>slips</strong> only.</li>
           </ul>
-          <img class="placeholder screenshot-small" src="images/admin-export.png" alt="Manage Items export panel screenshot">
+          </div>
+          <div class="screenshot-gallery screenshot-gallery-single" data-gallery="manage-items-export">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-items/06-export-panel.png">
+                <img class="guide-screenshot" src="screenshots/manage-items/06-export-panel.png" alt="Manage Items Export Panel showing document formats, item scope, and sorting options" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Export Panel:</strong> choose the output format, included items, image handling, and ordering.</figcaption>
+            </figure>
+          </div>
         </div>
 
         <h1>Item Slip Printing</h1>
@@ -552,7 +1035,14 @@ document.addEventListener("DOMContentLoaded", () => {
             <li><strong>Cutter:</strong> enable auto-cut if supported and set one cut per page.</li>
             <li><strong>Paper feed:</strong> calibrate top-of-form to avoid vertical drift between slips.</li>
           </ul>
-          <img class="placeholder screenshot-small" src="images/admin-slip-print.png" alt="Item slip printing screenshot">
+          <div class="screenshot-gallery screenshot-gallery-single" data-gallery="item-slip-printing">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-items/13-slip-print.png">
+                <img class="guide-screenshot" src="screenshots/manage-items/13-slip-print.png" alt="Browser print preview for a single auction item slip" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Item slip print preview:</strong> confirm the printer, paper size, margins, and scale before printing.</figcaption>
+            </figure>
+          </div>
 
           <h3>6x4 Label Printer</h3>
           <ul class="compact-list">
@@ -570,7 +1060,14 @@ document.addEventListener("DOMContentLoaded", () => {
           <h2>Overview</h2>
           <p><strong>Manage Payments</strong> allows you to manage and process payments for items won in auctions.</p>
           <p>The page header shows the selected auction, the current state, and the connection status. The main workspace is split between the settlement queue and the selected bidder's detail panel.</p>
-          <img class="placeholder screenshot-large" src="images/cashier-overview.png" alt="Manage Payments overview screenshot">
+          <div data-gallery="manage-payments-overview">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-payments/01-settlement-queue.png">
+                <img class="guide-screenshot screenshot-overview" src="screenshots/manage-payments/01-settlement-queue.png" alt="Manage Payments settlement queue with bidder balances and an empty bidder detail panel" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Manage Payments overview:</strong> select a bidder from the settlement queue to review and settle their account.</figcaption>
+            </figure>
+          </div>
         </div>
 
         <div class="section">
@@ -633,7 +1130,20 @@ document.addEventListener("DOMContentLoaded", () => {
             <li><strong>Picture toggle:</strong> the <strong>Show pictures</strong> option controls the item preview strip in the bidder detail and the linked buyer display.</li>
             <li><strong>Buyer Display:</strong> opens a pop-out screen for the currently selected paddle, including totals and optional thumbnails.</li>
           </ul>
-          <img class="placeholder screenshot-small" src="images/new-cashier-buyer-display.png" alt="Manage Payments buyer display screenshot">
+          <div class="screenshot-gallery" data-gallery="manage-payments-settlement">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-payments/02-bidder-details.png">
+                <img class="guide-screenshot" src="screenshots/manage-payments/02-bidder-details.png" alt="Manage Payments bidder detail showing lots won, item pictures, payment history, and totals" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Bidder detail:</strong> review lots, pictures, payments, and the remaining balance.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-payments/03-edit-bidder-name-modal.png">
+                <img class="guide-screenshot" src="screenshots/manage-payments/03-edit-bidder-name-modal.png" alt="Edit Bidder Name modal for the selected paddle" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Edit bidder name:</strong> update or clear the optional name associated with the selected paddle.</figcaption>
+            </figure>
+          </div>
         </div>
 
         <div class="section">
@@ -648,9 +1158,26 @@ document.addEventListener("DOMContentLoaded", () => {
             <li><strong>Fingerprint display:</strong> <strong>Show fingerprint</strong> reveals the current bidder fingerprint. This allows staff to verify the identity of the bidder at collection.</li>
             <li><strong>Operations menu:</strong> <strong>Payment Summary</strong> shows a payment-method breakdown, including donation totals, and <strong>Download CSV Summary</strong> exports the settlement summary for the selected auction.</li>
           </ul>
-          <img class="placeholder screenshot-small" src="images/cashier-payment-buttons.png" alt="Manage Payments payment button screenshot">
-          <img class="placeholder screenshot-small" src="images/new-cashier-receipt-print.png" alt="Manage Payments receipt print preview screenshot">
-          <img class="placeholder screenshot-small" src="images/cashier-summary.png" alt="Manage Payments summary screenshot">
+          <div class="screenshot-gallery" data-gallery="manage-payments-processing">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-payments/04-payment-entry-modal.png">
+                <img class="guide-screenshot" src="screenshots/manage-payments/04-payment-entry-modal.png" alt="Cash payment modal with payment amount, donation, note, and record controls" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Record payment:</strong> enter the payment, optional donation, and note.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-payments/05-auction-summary-modal.png">
+                <img class="guide-screenshot" src="screenshots/manage-payments/05-auction-summary-modal.png" alt="Auction Summary modal showing total sales, payment methods, donations, refunds, and outstanding balance" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Payment Summary:</strong> review settlement totals and the breakdown by payment method.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-payments/new-cashier-receipt.png">
+                <img class="guide-screenshot" src="screenshots/manage-payments/new-cashier-receipt.png" alt="Printed bidder receipt listing items won, payments, and amount due" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Receipt:</strong> the narrow print layout includes lots, payments, and the bidder balance.</figcaption>
+            </figure>
+          </div>
         </div>
 
         <h1>Manage Collections</h1>
@@ -659,7 +1186,14 @@ document.addEventListener("DOMContentLoaded", () => {
           <h2>Overview</h2>
           <p><strong>Manage Collections</strong> combines a recent-bids view with bidder collection buckets so staff can mark buckets ready, track invalidations, and mark collection as items leave the desk.</p>
           <p>The header shows the selected auction, current state, connection status, and a live refresh countdown.</p>
-          <img class="placeholder screenshot-large" src="images/live-feed-overview.png" alt="Manage Collections overview screenshot">
+          <div data-gallery="manage-collections-overview">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-collections/01-live-feed-overview.png">
+                <img class="guide-screenshot screenshot-overview" src="screenshots/manage-collections/01-live-feed-overview.png" alt="Manage Collections overview with recent bids and bidder collection buckets" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Manage Collections overview:</strong> recent bids remain visible beside the collection buckets.</figcaption>
+            </figure>
+          </div>
         </div>
 
         <div class="section">
@@ -743,6 +1277,14 @@ document.addEventListener("DOMContentLoaded", () => {
             <li><strong>Collect all:</strong> marks all sold items in the bucket as collected and refreshes the bidder fingerprint.</li>
             <li><strong>Export uncollected list:</strong> downloads a CSV showing the uncollected lots, paddle numbers, optional bidder names, prices, payments total, and payment status for the selected auction.</li>
           </ul>
+          <div class="screenshot-gallery screenshot-gallery-single" data-gallery="manage-collections-detail">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-collections/02-paddle-8-detail.png">
+                <img class="guide-screenshot" src="screenshots/manage-collections/02-paddle-8-detail.png" alt="Expanded Manage Collections bucket for paddle 8 showing won items, payment status, ready state, and pickup controls" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Collection bucket detail:</strong> item-level pickup controls appear with payment and readiness states.</figcaption>
+            </figure>
+          </div>
         </div>
 
         <h1>Slideshow</h1>
@@ -750,17 +1292,33 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="section">
           <h2>Overview</h2>
           <p>The slideshow is the unattended presentation mode for item images and overlays, using the shared operator session. A user with <strong>Slideshow</strong> access signs in through the shared login and can then launch slideshow kiosk mode.</p>
-          <img class="placeholder screenshot-large" src="images/slideshow-view.png" alt="Slideshow overview screenshot">
+          <div data-gallery="slideshow-overview">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/Slideshow/slideshow-view.png">
+                <img class="guide-screenshot screenshot-overview" src="screenshots/Slideshow/slideshow-view.png" alt="Slideshow displaying an auction item photograph with description, contributor, and creator overlay" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Slideshow overview:</strong> item photography fills the display with optional descriptive text.</figcaption>
+            </figure>
+          </div>
         </div>
 
-        <div class="section">
+        <div class="section media-section">
           <h2>Getting Started</h2>
-          <img class="placeholder screenshot-large" src="images/slideshow-login.png" alt="Slideshow auction selector screenshot">
+          <div class="section-copy">
           <ul class="compact-list">
             <li>On first load, the page opens an auction selector overlay for the shared slideshow session.</li>
             <li>Starting the slideshow from a shared operator session creates a kiosk session and signs this browser out of the other operator pages for safety.</li>
             <li>If the browser returns to slideshow in kiosk mode, the last selected auction is reused automatically until <strong>Change auction</strong> is chosen.</li>
           </ul>
+          </div>
+          <div class="screenshot-gallery screenshot-gallery-single" data-gallery="slideshow-start">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/Slideshow/slideshow-login.png">
+                <img class="guide-screenshot" src="screenshots/Slideshow/slideshow-login.png" alt="Slideshow start screen with an auction selector and Start slideshow button" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Start slideshow:</strong> choose the auction before entering kiosk mode.</figcaption>
+            </figure>
+          </div>
         </div>
 
         <div class="section">
@@ -773,10 +1331,10 @@ document.addEventListener("DOMContentLoaded", () => {
           </ul>
         </div>
 
-        <div class="section">
+        <div class="section media-section">
           <h2>Configuration Panel</h2>
+          <div class="section-copy">
           <p>The overlay auto-hides after inactivity and includes a <strong>Change auction</strong> action for returning to the auction selector.</p>
-          <img class="placeholder screenshot-small" src="images/slideshow-controls.png" alt="Slideshow controls screenshot">
           <ul class="compact-list">
             <li><strong>Transition Time:</strong> how long each slide is shown.</li>
             <li><strong>Show Description</strong>, <strong>Show Contributor</strong>, and <strong>Show Creator:</strong> control overlay text.</li>
@@ -785,6 +1343,15 @@ document.addEventListener("DOMContentLoaded", () => {
             <li><strong>Change auction:</strong> returns to the auction selector overlay.</li>
             <li><strong>Pause</strong>, <strong>Resume</strong>, and <strong>Reload slideshow:</strong> control playback directly.</li>
           </ul>
+          </div>
+          <div class="screenshot-gallery screenshot-gallery-single" data-gallery="slideshow-controls">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/Slideshow/slideshow-controls.png">
+                <img class="guide-screenshot" src="screenshots/Slideshow/slideshow-controls.png" alt="Slideshow configuration panel with timing, text, refresh, shuffle, and playback controls" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Configuration panel:</strong> adjust slide timing, overlays, refresh behavior, and playback.</figcaption>
+            </figure>
+          </div>
         </div>
 
         <h1 id="maintenance-panel">Manage Auctions</h1>
@@ -793,7 +1360,14 @@ document.addEventListener("DOMContentLoaded", () => {
           <h2>Overview</h2>
           <p><strong>Manage Auctions</strong> uses the same shared top menu as the other operator pages, then switches between operational areas from a dedicated left-hand navigation rail.</p>
           <p>The status strip shows the current maintenance view and the version summary for the installation.</p>
-          <img class="placeholder screenshot-large" src="images/maintenance-overview.png" alt="Manage Auctions overview screenshot">
+          <div data-gallery="manage-auctions-overview">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-auctions/01-auction-management.png">
+                <img class="guide-screenshot screenshot-overview" src="screenshots/manage-auctions/01-auction-management.png" alt="Manage Auctions overview with left navigation and the auction management table" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Manage Auctions overview:</strong> the navigation rail remains visible beside the selected maintenance workspace.</figcaption>
+            </figure>
+          </div>
         </div>
 
         <div class="section">
@@ -862,8 +1436,14 @@ document.addEventListener("DOMContentLoaded", () => {
             <li><strong>Help &gt; About:</strong> opens the current build and environment details for the maintenance console.</li>
             <li><strong>User menu:</strong> access theme selection, password change, and logout from the signed-in user menu.</li>
           </ul>
-          <img class="placeholder screenshot-small" src="images/new-maintenance-about.png" alt="Manage Auctions about dialog screenshot">
-          <img class="placeholder screenshot-small" src="images/new-maintenance-user-menu.png" alt="Manage Auctions user menu screenshot">
+          <div class="screenshot-gallery screenshot-gallery-single" data-gallery="manage-auctions-menu">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-auctions/new-maintenance-about.png">
+                <img class="guide-screenshot" src="screenshots/manage-auctions/new-maintenance-about.png" alt="About Convention Auction dialog showing software, database, backup, and restore details" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>About:</strong> inspect the running version, database identity, and backup status.</figcaption>
+            </figure>
+          </div>
         </div>
 
         <div class="section">
@@ -892,9 +1472,32 @@ document.addEventListener("DOMContentLoaded", () => {
               <span>Open the test item and bid tools for the auction on this row.</span>
             </div>
           </div>
-          <img class="placeholder screenshot-small" src="images/new-maintenance-add-auction.png" alt="Manage Auctions add new auction screenshot">
-          <img class="placeholder screenshot-small" src="images/new-maintenance-edit-auction.png" alt="Manage Auctions edit auction screenshot">
-          <img class="placeholder screenshot-small" src="images/maintenance-generate-test-data.png" alt="Manage Auctions test data generator screenshot">
+          <div class="screenshot-gallery" data-gallery="manage-auctions-management">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-auctions/02-add-auction-modal.png">
+                <img class="guide-screenshot" src="screenshots/manage-auctions/02-add-auction-modal.png" alt="Add New Auction modal with auction name, URL tag, and logo fields" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Add auction:</strong> set its display name, URL tag, and optional logo.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-auctions/03-qr-code-modal.png">
+                <img class="guide-screenshot" src="screenshots/manage-auctions/03-qr-code-modal.png" alt="Generate Auction QR Code modal with URL, colour, centre image, size, preview, and download controls" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Generate QR code:</strong> customise and download a code for the public auction URL.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-auctions/04-test-data-generator-modal.png">
+                <img class="guide-screenshot" src="screenshots/manage-auctions/04-test-data-generator-modal.png" alt="Test Data Generator modal with auction state, item count, and test item and bid controls" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Generate test data:</strong> create or remove test items and bids for the selected auction.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-auctions/05-edit-auction-modal.png">
+                <img class="guide-screenshot" src="screenshots/manage-auctions/05-edit-auction-modal.png" alt="Edit Auction modal with name, URL tag, logo, state, and Manage Items state permission" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Edit auction:</strong> update its identity, state, logo, and state-change permission.</figcaption>
+            </figure>
+          </div>
         </div>
 
         <div class="section">
@@ -932,7 +1535,32 @@ document.addEventListener("DOMContentLoaded", () => {
               <span>Permanently remove the backup archive from the server.</span>
             </div>
           </div>
-          <img class="placeholder screenshot-small" src="images/maintenance-database.png" alt="Manage Auctions database backup screenshot">
+          <div class="screenshot-gallery" data-gallery="manage-auctions-backups">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-auctions/13-database-backups.png">
+                <img class="guide-screenshot" src="screenshots/manage-auctions/13-database-backups.png" alt="Database Backups page showing backup creation, import, storage totals, and managed backup actions" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Database Backups:</strong> create, import, inspect, download, restore, or delete managed backups.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-auctions/14-create-backup-modal.png">
+                <img class="guide-screenshot" src="screenshots/manage-auctions/14-create-backup-modal.png" alt="Create Backup modal with note field, backup options, status, and backup log" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Create backup:</strong> add an optional note and monitor the captured backup log.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-auctions/15-import-backup-modal.png">
+                <img class="guide-screenshot" src="screenshots/manage-auctions/15-import-backup-modal.png" alt="Import Backup modal showing backup file selection, validation summary, and import preview" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Import backup:</strong> validate and preview an uploaded archive before importing it.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-auctions/16-backup-details-modal.png">
+                <img class="guide-screenshot" src="screenshots/manage-auctions/16-backup-details-modal.png" alt="Backup Details modal showing metadata, components, schema, file sizes, and auction inventory" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Backup details:</strong> inspect metadata, components, compatibility, and included auctions.</figcaption>
+            </figure>
+          </div>
         </div>
 
         <div class="section">
@@ -948,9 +1576,26 @@ document.addEventListener("DOMContentLoaded", () => {
             <li><strong>Message item references:</strong> Manage Auctions has no selected auction context, so the messaging item-search control is not shown on this page.</li>
             <li><strong>Server Logs:</strong> refresh logs inline, enable auto-refresh, or open the dedicated pop-out log viewer.</li>
           </ul>
-          <img class="placeholder screenshot-small" src="images/maintenance-import-export.png" alt="Manage Auctions CSV export screenshot">
-          <img class="placeholder screenshot-small" src="images/maintenance-diagnostics.png" alt="Manage Auctions diagnostics screenshot">
-          <img class="placeholder screenshot-small" src="images/maintenance-server-logs.png" alt="Manage Auctions server logs screenshot">
+          <div class="screenshot-gallery" data-gallery="manage-auctions-advanced">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-auctions/17-advanced-overview.png">
+                <img class="guide-screenshot" src="screenshots/manage-auctions/17-advanced-overview.png" alt="Advanced maintenance page with storage report, integrity check, server control, export, and message tools" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Advanced overview:</strong> server, export, message, storage, and integrity operations are grouped on one page.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-auctions/18-advanced-storage-report.png">
+                <img class="guide-screenshot" src="screenshots/manage-auctions/18-advanced-storage-report.png" alt="Advanced page with an expanded image storage report showing file counts and disk use" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Storage report:</strong> review image usage and orphaned files before cleanup.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-auctions/19-advanced-integrity-check.png">
+                <img class="guide-screenshot" src="screenshots/manage-auctions/19-advanced-integrity-check.png" alt="Advanced page showing detailed integrity check results and safe-fix availability" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Integrity check:</strong> inspect data consistency results and apply safe fixes when available.</figcaption>
+            </figure>
+          </div>
         </div>
 
         <div class="section">
@@ -981,8 +1626,26 @@ document.addEventListener("DOMContentLoaded", () => {
               <span>Remove the user account after confirmation.</span>
             </div>
           </div>
-          <img class="placeholder screenshot-small" src="images/maintenance-security-add-user.png" alt="Manage Auctions add user screenshot">
-          <img class="placeholder screenshot-small" src="images/maintenance-security.png" alt="Manage Auctions user management screenshot">
+          <div class="screenshot-gallery" data-gallery="manage-auctions-users">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-auctions/06-manage-users.png">
+                <img class="guide-screenshot" src="screenshots/manage-auctions/06-manage-users.png" alt="Manage Users page listing accounts, permissions, and user action buttons" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Manage Users:</strong> review account permissions and open row-level user actions.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-auctions/07-add-user-modal.png">
+                <img class="guide-screenshot" src="screenshots/manage-auctions/07-add-user-modal.png" alt="Add User modal with username, password confirmation, and grouped permission checkboxes" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Add user:</strong> create the initial password and assign the required permissions.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-auctions/08-edit-user-modal.png">
+                <img class="guide-screenshot" src="screenshots/manage-auctions/08-edit-user-modal.png" alt="Edit User modal with password reset and permission controls" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Edit user:</strong> reset the password or change access permissions.</figcaption>
+            </figure>
+          </div>
         </div>
 
         <div class="section">
@@ -994,10 +1657,32 @@ document.addEventListener("DOMContentLoaded", () => {
             <li><strong>Audit Viewer:</strong> filter by ID or event type, then download the filtered audit CSV.</li>
           </ul>
           <p>See the <a href="pptx_guide.html">PowerPoint Template Guide</a> for the slide and card template details and the underlying generator config files.</p>
-          <img class="placeholder screenshot-small" src="images/maintenance-pptx-template-editor.png" alt="Manage Auctions template editor screenshot">
-          <img class="placeholder screenshot-small" src="images/maintenance-image-manager.png" alt="Manage Auctions image management screenshot">
-          <img class="placeholder screenshot-small" src="images/maintenance-payment-processing.png" alt="Manage Auctions payment management screenshot">
-          <img class="placeholder screenshot-small" src="images/maintenance-audit-log-viewer.png" alt="Manage Auctions audit viewer screenshot">
+          <div class="screenshot-gallery" data-gallery="manage-auctions-tools">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-auctions/09-template-editor.png">
+                <img class="guide-screenshot" src="screenshots/manage-auctions/09-template-editor.png" alt="Template Editor showing the selected template configuration and editable JSON" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Template Editor:</strong> load, validate, save, or reset generator configuration.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-auctions/10-image-management.png">
+                <img class="guide-screenshot" src="screenshots/manage-auctions/10-image-management.png" alt="Image Management page listing shared resource images with upload and delete controls" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Image Management:</strong> upload and remove shared resource images.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-auctions/11-payment-management.png">
+                <img class="guide-screenshot" src="screenshots/manage-auctions/11-payment-management.png" alt="Payment Management page listing payment methods, enabled states, fees, and callback tests" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Payment Management:</strong> review enabled methods, charges, and callback configuration.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-auctions/12-audit-viewer.png">
+                <img class="guide-screenshot" src="screenshots/manage-auctions/12-audit-viewer.png" alt="Audit Viewer with ID and event filters, results table, and CSV download control" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Audit Viewer:</strong> filter events and download the matching audit records.</figcaption>
+            </figure>
+          </div>
         </div>
 
         <h1>Public Entry</h1>
@@ -1012,8 +1697,22 @@ document.addEventListener("DOMContentLoaded", () => {
             <li>Users can upload an existing photo, capture a live photo, or tick <strong>I do not have a photo</strong>.</li>
             <li>The public page includes its own theme toggle and is intended for <strong>setup</strong> state submissions.</li>
           </ul>
-          <img class="placeholder screenshot-small" src="images/public-submit.png" alt="Public entry form screenshot">
-          <img class="placeholder screenshot-small" src="images/public-select.png" alt="Public entry auction selector screenshot">
+          <div data-gallery="public-entry">
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/public/public-submit.png">
+                <img class="guide-screenshot screenshot-overview" src="screenshots/public/public-submit.png" alt="Public auction item entry form with item details, photo choices, and submit button" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Public item entry:</strong> submit item details and provide or explicitly omit a photograph.</figcaption>
+            </figure>
+            <div class="screenshot-gallery screenshot-gallery-single">
+              <figure class="guide-figure">
+                <a class="screenshot-link" href="screenshots/public/public-select.png">
+                  <img class="guide-screenshot" src="screenshots/public/public-select.png" alt="Public Auction item entry page asking for the auction short name" loading="lazy" decoding="async">
+                </a>
+                <figcaption><strong>Auction selector:</strong> enter the supplied short name when it is not included in the URL.</figcaption>
+              </figure>
+            </div>
+          </div>
         </div>
 
         <h1>Function / State Quick Reference</h1>
@@ -1205,9 +1904,26 @@ document.addEventListener("DOMContentLoaded", () => {
           </tbody>
         </table>
 
+        </div>
       </div>
     </section>
   </main>
+
+  <dialog class="screenshot-dialog" id="screenshot-dialog" aria-labelledby="screenshot-dialog-caption">
+    <div class="screenshot-dialog-shell">
+      <header class="screenshot-dialog-header">
+        <p class="screenshot-dialog-caption" id="screenshot-dialog-caption"></p>
+        <div class="screenshot-dialog-controls" aria-label="Screenshot controls">
+          <button type="button" data-dialog-previous aria-label="Previous screenshot">Previous</button>
+          <button type="button" data-dialog-next aria-label="Next screenshot">Next</button>
+          <button type="button" data-dialog-close>Close</button>
+        </div>
+      </header>
+      <div class="screenshot-dialog-stage">
+        <img class="screenshot-dialog-image" alt="">
+      </div>
+    </div>
+  </dialog>
 
   <footer>
     <p><a href="index.html">Back to main site</a></p>
