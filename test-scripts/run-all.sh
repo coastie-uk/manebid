@@ -13,6 +13,7 @@ if ! [[ "$delay" =~ ^[0-9]+$ ]] || [ "$delay" -lt 0 ]; then
 fi
 
 scripts=(
+  security-tests.js
   backend-tests.js
   bid_payment-tests.js
   maintenance-tests.js

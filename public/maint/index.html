@@ -1,27 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-view-key="maintenance" data-access-role="maintenance" data-message-poll-ms="30000" data-message-item-references="false">
 <head>
   <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Manage Auctions | ManeBid — Convention Auction Manager</title>
-  <script>
-    (function bootstrapOperatorTheme() {
-      const getBrowserPreferredTheme = () => window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light";
-      try {
-        const session = JSON.parse(localStorage.getItem("operatorSession") || "null");
-        const savedMode = String(session?.user?.preferences?.theme?.mode || "").toLowerCase();
-        const mode = savedMode === "dark" || savedMode === "light"
-          ? savedMode
-          : getBrowserPreferredTheme();
-        document.documentElement.dataset.theme = mode;
-        document.documentElement.style.colorScheme = mode;
-      } catch (_error) {
-        const mode = getBrowserPreferredTheme();
-        document.documentElement.dataset.theme = mode;
-        document.documentElement.style.colorScheme = mode;
-      }
-    })();
-  </script>
+  <script src="/scripts/page-bootstrap.js"></script>
   <link rel="stylesheet" href="/styles/admin-styles.css" />
   <link rel="stylesheet" href="/styles/maintenance.css" />
   <link rel="icon" type="image/png" href="/images/favicon.png" />
@@ -101,7 +85,7 @@
               <button type="button" class="maintenance-tab-button" data-tab="image-management" data-tab-label="Image Management">Image Management</button>
               <button type="button" class="maintenance-tab-button" data-tab="payment-management" data-tab-label="Payment Management">Payment Management</button>
               <button type="button" class="maintenance-tab-button" data-tab="audit-viewer" data-tab-label="Audit Viewer">Audit Viewer</button>
-              <button type="button" class="maintenance-tab-button" data-tab="database-backups" data-tab-label="Database Backups">Database Backups</button>
+              <button type="button" class="maintenance-tab-button" data-tab="database-backups" data-tab-label="Database Backups">Backup / Restore</button>
               <button type="button" class="maintenance-tab-button" data-tab="diagnostics" data-tab-label="Advanced">Advanced</button>
             </nav>
           </div>
@@ -415,14 +399,14 @@
                     <p>Load a config, validate the JSON, then save or reset it.</p>
                   </div>
                   <div class="maintenance-actions-row">
-                    <button type="button" onclick="showConfigEditor()">Open Editor</button>
+                    <button id="open-config-editor" type="button">Open Editor</button>
                   </div>
                 </div>
 
                 <section id="config-editor" style="display:none;">
                   <div class="maintenance-form-grid">
                     <label for="config-select">Which Config?</label>
-                    <select id="config-select" onchange="showConfigEditor()">
+                    <select id="config-select">
                       <option value="pptx">Slide Config (pptxConfig.json)</option>
                       <option value="card">Card Config (cardConfig.json)</option>
                       <option value="slip">Item Slip Config (slipConfig.json)</option>
@@ -437,7 +421,7 @@
                   <div class="maintenance-actions-row">
                     <button id="save-config" type="button">Save Config</button>
                     <button id="reset-pptx-config" type="button">Reset to Default</button>
-                    <button type="button" onclick="document.getElementById('config-editor').style.display='none'">Cancel</button>
+                    <button id="cancel-config-editor" type="button">Cancel</button>
                   </div>
                 </section>
               </section>
@@ -1063,31 +1047,13 @@
   </main>
 
   <script src="/scripts/banner.js"></script>
-  <script src="/scripts/session-auth.js"></script>
+  <script src="/scripts/session-auth.js?v=2026-07-02-csrf-1"></script>
   <script src="/scripts/theme.js"></script>
-  <script>
-    window.__APP_PAGE_AUTH__ = {
-      viewKey: "maintenance",
-      access: { role: "maintenance" }
-    };
-  </script>
   <script src="/scripts/auth-bootstrap.js"></script>
-  <script>
-    window.AppMessagingConfig = {
-      closedPollMs: 30000,
-      enableItemReferences: false
-    };
-  </script>
   <script src="/scripts/messaging.js?v=2026-05-25-notify-all-1"></script>
-  <script src="/scripts/maintenance.js"></script>
+  <script src="/scripts/maintenance.js?v=2026-07-02-csrf-1"></script>
   <script src="/scripts/daypilot-modal-3.15.1.min.js"></script>
-  <script>
-    document.getElementById("maintenance-password").addEventListener("keyup", function (event) {
-      if (event.keyCode === 13) {
-        document.getElementById("login-button").click();
-      }
-    });
-  </script>
+  <script src="/scripts/page-events.js"></script>
 
   <footer>
     <p>Developed by Chris Staples ("Coastie") for Festival of Friendship <span title="Hoers">🐴</span></p>

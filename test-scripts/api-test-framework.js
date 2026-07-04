@@ -54,8 +54,38 @@ function initFramework(options) {
     lastResponse: null
   };
 
-  function authHeaders(token, extra = {}) {
-    return { Authorization: token, ...extra };
+  function getSetCookieHeader(res) {
+    if (typeof res.headers.getSetCookie === "function") {
+      return res.headers.getSetCookie()[0] || "";
+    }
+    return res.headers.get("set-cookie") || "";
+  }
+
+  function sessionFromResponse(res, json) {
+    const setCookie = getSetCookieHeader(res);
+    const cookie = setCookie.split(";")[0];
+    if (!cookie || !json?.csrf_token) return null;
+    return {
+      cookie,
+      csrfToken: json.csrf_token,
+      data: json,
+      setCookie
+    };
+  }
+
+  function authHeaders(session, extra = {}) {
+    if (session && typeof session === "object") {
+      return {
+        Cookie: session.cookie,
+        "X-CSRF-Token": session.csrfToken,
+        ...extra
+      };
+    }
+    return {
+      Cookie: `manebid_session=${String(session || "")}`,
+      "X-CSRF-Token": String(session || ""),
+      ...extra
+    };
   }
 
   async function fetchJson(url, options) {
@@ -70,6 +100,7 @@ function initFramework(options) {
     }
     res._bodyText = text;
     res._bodyJson = json;
+    res._session = sessionFromResponse(res, json);
     res._request = { method, url };
     context.lastResponse = { status: res.status, json, text, method, url };
     return { res, json, text };
@@ -171,7 +202,8 @@ function initFramework(options) {
       body: JSON.stringify({ username, role, password })
     });
 
-    if (res.status !== 200 || !json || !json.token) {
+    const session = sessionFromResponse(res, json);
+    if (res.status !== 200 || !session) {
       tests.forEach(test => {
         test.skip = true;
       });
@@ -180,7 +212,7 @@ function initFramework(options) {
       return null;
     }
 
-    return json.token;
+    return session;
   }
 
   async function run() {
@@ -268,6 +300,7 @@ console.log("\n==================== Summary ====================");
     fetchJson,
     expectStatus,
     loginAs,
+    sessionFromResponse,
     listTests
   };
 }

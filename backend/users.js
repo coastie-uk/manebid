@@ -376,9 +376,11 @@ function updateUserAccess(username, { roles, permissions = [] }) {
   if (normalizedUsername === ROOT_USERNAME) {
     return db.prepare(`
       UPDATE users
-      SET roles = ?, permissions = ?, is_root = 1, updated_at = strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')
+      SET roles = ?, permissions = ?, is_root = 1,
+          session_invalid_before = MAX(COALESCE(session_invalid_before, 0) + 1, ?),
+          updated_at = strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')
       WHERE lower(username) = lower(?)
-    `).run(JSON.stringify(ROLE_LIST), JSON.stringify(PERMISSION_LIST), ROOT_USERNAME);
+    `).run(JSON.stringify(ROLE_LIST), JSON.stringify(PERMISSION_LIST), Date.now(), ROOT_USERNAME);
   }
 
   const access = shapeUserAccess({ roles, permissions, is_root: 0 });
@@ -388,9 +390,11 @@ function updateUserAccess(username, { roles, permissions = [] }) {
 
   return db.prepare(`
     UPDATE users
-    SET roles = ?, permissions = ?, updated_at = strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')
+    SET roles = ?, permissions = ?,
+        session_invalid_before = MAX(COALESCE(session_invalid_before, 0) + 1, ?),
+        updated_at = strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')
     WHERE lower(username) = lower(?)
-  `).run(JSON.stringify(access.roles), JSON.stringify(access.permissions), normalizedUsername);
+  `).run(JSON.stringify(access.roles), JSON.stringify(access.permissions), Date.now(), normalizedUsername);
 }
 
 function setUserPassword(username, passwordHash) {
@@ -399,9 +403,11 @@ function setUserPassword(username, passwordHash) {
 
   return db.prepare(`
     UPDATE users
-    SET password = ?, updated_at = strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')
+    SET password = ?,
+        session_invalid_before = MAX(COALESCE(session_invalid_before, 0) + 1, ?),
+        updated_at = strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')
     WHERE lower(username) = lower(?)
-  `).run(passwordHash, normalizedUsername);
+  `).run(passwordHash, Date.now(), normalizedUsername);
 }
 
 function setUserPreferences(username, preferences) {

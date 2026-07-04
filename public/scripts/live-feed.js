@@ -340,8 +340,8 @@
     window.location.assign(url);
   }
 
-  function logout() {
-    window.AppAuth?.clearAllSessions?.({ broadcast: true });
+  async function logout() {
+    await window.AppAuth?.logout?.();
     closeAboutModal();
     window.location.replace('/login.html?reason=signed_out');
   }
@@ -439,10 +439,10 @@
     }
 
     try {
-      const res = await fetch(CHANGE_PASSWORD, {
+      const res = await window.AppAuth.authenticatedFetch(CHANGE_PASSWORD, {
         method: 'POST',
         headers: {
-          Authorization: authToken,
+          "X-CSRF-Token": authToken,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ currentPassword, newPassword })
@@ -451,6 +451,8 @@
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         notify(data.message || 'Password updated.', 'success');
+        window.AppAuth?.clearAllSessions?.({ broadcast: true });
+        window.setTimeout(() => window.location.replace('/login.html?reason=signed_out'), 800);
       } else {
         notify(data.error || 'Failed to change password', 'error');
       }
@@ -460,16 +462,17 @@
   }
 
   async function getSessionToken() {
-    const session = window.__APP_AUTH_BOOTSTRAP__ || await window.AppAuth?.refreshSession?.();
+    const session = window.__APP_AUTH_BOOTSTRAP__
+      || (window.__APP_AUTH_READY__ ? await window.__APP_AUTH_READY__ : await window.AppAuth?.refreshSession?.());
     if (!session) return null;
-    return { token: session.token, storageKey: 'shared', data: session };
+    return { token: session.csrf_token, storageKey: 'shared', data: session };
   }
 
   async function fetchAuctions() {
-    const res = await fetch(LIST_AUCTIONS, {
+    const res = await window.AppAuth.authenticatedFetch(LIST_AUCTIONS, {
       method: 'POST',
       headers: {
-        Authorization: authToken,
+        "X-CSRF-Token": authToken,
         'Content-Type': 'application/json'
       }
     });
@@ -701,11 +704,11 @@
   }
 
   async function apiPost(url, body) {
-    const res = await fetch(url, {
+    const res = await window.AppAuth.authenticatedFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: authToken
+        "X-CSRF-Token": authToken
       },
       body: JSON.stringify(body || {})
     });
@@ -722,8 +725,8 @@
       throw new Error('Please select an auction first');
     }
 
-    const res = await fetch(`${API}/${auctionId}/uncollected.csv`, {
-      headers: { Authorization: authToken }
+    const res = await window.AppAuth.authenticatedFetch(`${API}/${auctionId}/uncollected.csv`, {
+      headers: { "X-CSRF-Token": authToken }
     });
     if (!res.ok) {
       const payload = await res.json().catch(() => ({}));
@@ -1232,8 +1235,8 @@
     updateCountdown();
 
     try {
-      const res = await fetch(`${API}/${auctionId}?unsold=${els.chkUnsold.checked}`, {
-        headers: { 'Content-Type': 'application/json', Authorization: authToken }
+      const res = await window.AppAuth.authenticatedFetch(`${API}/${auctionId}?unsold=${els.chkUnsold.checked}`, {
+        headers: { 'Content-Type': 'application/json', "X-CSRF-Token": authToken }
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 

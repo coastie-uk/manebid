@@ -44,7 +44,7 @@ const API = "/api"
 
 
   function getToken() {
-    return window.AppAuth?.getToken?.() || localStorage.getItem("token");
+    return window.AppAuth?.getToken?.() || (window.AppAuth?.getToken?.() || null);
   }
 
   function canManageBids() {
@@ -167,11 +167,11 @@ const API = "/api"
         try {
   //          const currentAuctionId = sessionStorage.getItem("auction_id");
           const currentAuctionId = parseInt(document.getElementById("auction-select").value, 10);
-          const res = await fetch(STATUS_API, {
+          const res = await window.AppAuth.authenticatedFetch(STATUS_API, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': getToken()
+              'X-CSRF-Token': getToken()
             },
             body: JSON.stringify({ auction_id: currentAuctionId })
           });
@@ -306,8 +306,8 @@ const API = "/api"
   async function fetchKnownBidders(auctionId) {
     if (!auctionId) return [];
     try {
-      const res = await fetch(BIDDER_LIST_API(auctionId), {
-        headers: { 'Authorization': getToken() }
+      const res = await window.AppAuth.authenticatedFetch(BIDDER_LIST_API(auctionId), {
+        headers: { 'X-CSRF-Token': getToken() }
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Failed to load bidders');
@@ -415,8 +415,8 @@ const API = "/api"
         return;
       }
       try {
-        const res = await fetch(BIDDER_LOOKUP_API(auctionId, paddle), {
-          headers: { 'Authorization': getToken() }
+        const res = await window.AppAuth.authenticatedFetch(BIDDER_LOOKUP_API(auctionId, paddle), {
+          headers: { 'X-CSRF-Token': getToken() }
         });
         if (!res.ok) return;
         const data = await res.json();
@@ -447,9 +447,9 @@ const API = "/api"
         const nextContext = advance ? findNextFinalizeContext(activeItem.itemId, activeItem.rowEl) : null;
         okButton.disabled = true;
         recordNextButton.disabled = true;
-        const res = await fetch(FINALIZE_API(activeItem.itemId), {
+        const res = await window.AppAuth.authenticatedFetch(FINALIZE_API(activeItem.itemId), {
           method:'POST',
-          headers:{ 'Content-Type':'application/json', 'Authorization': getToken() },
+          headers:{ 'Content-Type':'application/json', 'X-CSRF-Token': getToken() },
           body: JSON.stringify({ paddle:Number(paddle), price:Number(price), bidderName, auctionId:Number(auctionId) })
         });
         const data = await res.json();
@@ -513,8 +513,8 @@ const API = "/api"
   // --------------- undo finalize -----------------------------
   async function undoFinalize(itemId, rowEl) {
     try {
-      const previewResponse = await fetch(UNDO_PREVIEW_API(itemId), {
-        headers: { 'Authorization': getToken() }
+      const previewResponse = await window.AppAuth.authenticatedFetch(UNDO_PREVIEW_API(itemId), {
+        headers: { 'X-CSRF-Token': getToken() }
       });
       const previewData = await previewResponse.json();
       if (!previewResponse.ok) {
@@ -532,9 +532,9 @@ const API = "/api"
         modal.confirmButton.textContent = 'Retracting...';
 
         try {
-          const res = await fetch(UNDO_API(itemId), {
+          const res = await window.AppAuth.authenticatedFetch(UNDO_API(itemId), {
             method:'POST',
-            headers:{ 'Authorization': getToken() }
+            headers:{ 'X-CSRF-Token': getToken() }
           });
           const data = await res.json();
           if (!res.ok) {
@@ -655,14 +655,10 @@ observer.observe(TABLE_BODY, { childList: true });
     }
 
 window.addEventListener("load", () => {
-    const token = localStorage.getItem("token");
+    const token = (window.AppAuth?.getToken?.() || null);
     if (!token) return; // Not logged in
 
-    fetch(`${API}/validate`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ token })
-    })
+    window.AppAuth.authenticatedFetch(`${API}/validate`, { method: "POST" })
     .then(res => {
         if (res.status === 403) {
             throw new Error("Token expired");
@@ -674,7 +670,7 @@ window.addEventListener("load", () => {
     })
     .catch(err => {
 
-        localStorage.removeItem("token");
+        window.AppAuth?.clearAllSessions?.({ broadcast: false });
         window.location.href = "/admin"; // or logout()
     });
 });

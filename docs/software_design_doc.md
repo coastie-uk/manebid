@@ -1,4 +1,4 @@
-# Convention Auction — Software Design Document
+# ManeBid — Convention Auction Manager Software Design Document
 
 ## Goals / scope
 
@@ -12,7 +12,7 @@ It focuses on:
 
 Current code snapshot:
 
-- backend package version: `3.0.2-dev04`
+- backend package version: `3.0.2-dev06`
 - database schema version: `3.0`
 - payment processor module version: `SumUp 1.2.0(2026-02-09)`
 
@@ -91,10 +91,17 @@ Current explicit permissions:
 
 ### Session model
 
-- Shared operator session is stored in `localStorage.operatorSession`.
-- Legacy mirrors such as `token`, `cashierToken`, and `maintenanceToken` are still written for compatibility.
+- Authentication is a 12-hour, fixed-expiry JWT in the `manebid_session`
+  cookie. The cookie is `HttpOnly`, `SameSite=Strict`, `Path=/`, and `Secure`
+  when the backend runs in production.
+- Browser storage contains display metadata only. Legacy `token`,
+  `cashierToken`, and `maintenanceToken` keys are removed during bootstrap.
+- The CSRF value returned by login/validation is held in memory and sent as
+  `X-CSRF-Token` on authenticated unsafe requests.
 - Last view is stored in `localStorage.operatorLastView`.
-- Slideshow kiosk mode uses a separate session copy in `sessionStorage.slideshowKioskSession`.
+- Slideshow kiosk conversion replaces the operator cookie with a
+  slideshow-only scoped cookie. The browser stores only non-sensitive kiosk
+  display metadata in `sessionStorage.slideshowKioskSession`.
 - User interface preferences are persisted server-side in `users.preferences` and loaded/saved through:
   - `GET /api/preferences`
   - `POST /api/preferences`
@@ -128,6 +135,8 @@ Important mounted modules:
 ### Cross-cutting middleware and helpers
 
 - `authenticateRole(...)` and `authenticateAccess(...)`
+- `authenticateSession(...)` loads the current database user for every request
+  and enforces CSRF for unsafe methods
 - `checkAuctionState(...)`
 - text sanitisation helpers
 - audit logging via `audit(...)`
@@ -289,7 +298,11 @@ Data flow:
 - reads `auctions`
 - inserts into `items`
 - writes resized photo files into `UPLOAD_DIR` when provided
-- records audit as public submission unless an authenticated admin token was supplied
+- records audit as public submission unless an authenticated admin cookie and
+  valid CSRF token explicitly select the administrator path
+- applies a per-forwarded-client submission limiter
+- accepts at most one JPEG/PNG photo, limited to 10 MiB, and removes originals
+  and partial derivatives on every failure path
 
 ---
 
@@ -304,13 +317,14 @@ Files:
 Flow:
 
 1. Operator signs in once with username and password.
-2. Backend returns:
-   - JWT
+2. Backend sets the `manebid_session` HttpOnly cookie and returns:
+   - CSRF token
    - resolved `landing_path`
    - `user` access shape
    - `versions` metadata
 3. Shared session is stored through `AppAuth`.
-4. Operator pages call `POST /api/validate` to refresh tokens and pick up restore/version metadata.
+4. Operator pages call cookie-based `POST /api/validate` to obtain current
+   access and session metadata. JWTs are never returned to JavaScript.
 5. Per-user preferences are loaded from `GET /api/preferences` and saved via `POST /api/preferences`.
 
 Important behavior:
@@ -318,11 +332,16 @@ Important behavior:
 - login is no longer role-specific; landing page is derived from access
 - pages are shown/hidden from access metadata, not separate logins
 - remote logout uses `users.session_invalid_before`
+- password and access updates atomically advance `session_invalid_before`
+- authorization roles and permissions always come from the current user row
+- authenticated unsafe methods require `X-CSRF-Token`
 
 Backend endpoints:
 
 - `POST /api/login`
 - `POST /api/validate`
+- `POST /api/logout`
+- `POST /api/session/kiosk`
 - `GET /api/preferences`
 - `POST /api/preferences`
 - `POST /api/change-password`
@@ -931,6 +950,8 @@ Flow:
 2. Frontend fetches available slideshow auctions from `GET /api/slideshow/auctions`.
 3. User picks an auction by `public_id`.
 4. Frontend starts kiosk session mode through `AppAuth`.
+   The backend replaces the existing operator cookie with a session whose
+   effective access is only `slideshow`.
 5. Slideshow stores:
    - selected `public_id`
    - selected auction name
@@ -941,6 +962,7 @@ Endpoints:
 
 - `POST /api/login`
 - `POST /api/validate`
+- `POST /api/session/kiosk`
 - `GET /api/slideshow/auctions`
 - `GET /api/auctions/:publicId/slideshow-items`
 - `GET /api/uploads/<photo_filename>`
@@ -958,6 +980,8 @@ Authentication/session:
 
 - `POST /api/login`
 - `POST /api/validate`
+- `POST /api/logout`
+- `POST /api/session/kiosk`
 - `GET /api/preferences`
 - `POST /api/preferences`
 - `POST /api/change-password`
@@ -1098,6 +1122,13 @@ The application has advanced from the `2.2` baseline to include:
 - persistent operator messaging with unread alerts, notifications, presence, broadcasts, item references, and attention acknowledgements
 - managed backup archives with selective restore
 - authenticated slideshow kiosk mode
+- strict cookie/CSRF authentication with current-database authorization
+- CSP-compatible external scripts, plain-text rendering of submitted/log data,
+  and proxy-enforced security headers
+- explicit loopback binding and trust for loopback plus
+  `192.168.0.254/32`; deployments with a different proxy must change this list
+- separate maintained public-submission, username/IP login, and IP-wide login
+  limiters
 
 Any future design changes should update this document together with:
 

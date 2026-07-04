@@ -1,21 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme-source="public">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Submit an Item | ManeBid — Convention Auction Manager</title>
-    <script>
-        (function bootstrapPublicTheme() {
-            try {
-                const mode = sessionStorage.getItem("publicEntryTheme") === "dark" ? "dark" : "light";
-                document.documentElement.dataset.theme = mode;
-                document.documentElement.style.colorScheme = mode;
-            } catch (_error) {
-                document.documentElement.dataset.theme = "light";
-                document.documentElement.style.colorScheme = "light";
-            }
-        })();
-    </script>
+    <script src="/scripts/page-bootstrap.js"></script>
     <link rel="stylesheet" href="/styles/styles.css">
     <link rel="icon" type="image/png" href="/images/favicon.png" />
 </head>
@@ -120,11 +110,7 @@
     <script src="/scripts/script.js"></script>
     <script src="/scripts/daypilot-modal-3.15.1.min.js"></script>
     <script src="/scripts/banner.js"></script>
-    <script>
-        document.getElementById("capture-button").addEventListener("click", function () {
-            document.getElementById("live-photo").click();
-        });
-    </script>
+    <script src="/scripts/page-events.js"></script>
 
     <footer class="page-footer">
         <p><span class="brand-lockup"><span class="app-wordmark">ManeBid</span><span class="app-tagline">Convention Auction Manager</span></span>Developed by Chris Staples ("Coastie") for Festival of Friendship <span title="Hoers">🐴</span></p>

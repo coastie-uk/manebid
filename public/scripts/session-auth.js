@@ -85,25 +85,24 @@
   }
 
   function normaliseSession(payload) {
-    if (!payload || typeof payload.token !== "string" || !payload.token.trim()) return null;
+    if (!payload || typeof payload !== "object") return null;
     const user = normaliseUser(payload.user || payload);
     return {
-      token: payload.token,
+      csrf_token: typeof payload.csrf_token === "string" ? payload.csrf_token : null,
+      session_scope: payload.session_scope || "operator",
       user,
       versions: payload.versions || null,
       landing_path: payload.landing_path || getDefaultLandingPath(user)
     };
   }
 
-  function setLegacyTokenMirrors(token) {
+  function clearLegacyTokens() {
     LEGACY_TOKEN_KEYS.forEach((key) => {
-      if (token) {
-        localStorage.setItem(key, token);
-      } else {
-        localStorage.removeItem(key);
-      }
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
     });
   }
+  clearLegacyTokens();
 
   function getSharedSession() {
     return normaliseSession(safeParse(localStorage.getItem(STORAGE_KEY)));
@@ -115,8 +114,8 @@
 
   function writeStoredSession(session) {
     if (!session) return null;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-    setLegacyTokenMirrors(session.token);
+    const { csrf_token: _csrfToken, ...nonSensitiveMetadata } = session;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(nonSensitiveMetadata));
     global.__APP_SESSION__ = session;
     return session;
   }
@@ -141,7 +140,8 @@
   function saveKioskSession(payload) {
     const session = normaliseSession(payload);
     if (!session) return null;
-    sessionStorage.setItem(KIOSK_KEY, JSON.stringify(session));
+    const { csrf_token: _csrfToken, ...nonSensitiveMetadata } = session;
+    sessionStorage.setItem(KIOSK_KEY, JSON.stringify(nonSensitiveMetadata));
     global.__APP_KIOSK_SESSION__ = session;
     return session;
   }
@@ -153,7 +153,7 @@
 
   function clearSharedSession({ broadcast = true } = {}) {
     localStorage.removeItem(STORAGE_KEY);
-    setLegacyTokenMirrors(null);
+    clearLegacyTokens();
     delete global.__APP_SESSION__;
     if (broadcast) {
       localStorage.setItem(LOGOUT_KEY, String(Date.now()));
@@ -173,7 +173,7 @@
   function setAppliedPreferences(preferences) {
     const session = global.__APP_SESSION__ || getSharedSession();
     const normalized = normalisePreferences(preferences);
-    if (!session?.token) return normalized;
+    if (!session) return normalized;
 
     const updatedSession = {
       ...session,
@@ -186,19 +186,12 @@
     return normalized;
   }
 
-  function getLegacyTokenSession() {
-    for (const key of LEGACY_TOKEN_KEYS) {
-      const token = localStorage.getItem(key);
-      if (token) return { token };
-    }
-    return null;
-  }
-
-  async function validateToken(token) {
+  async function validateSession() {
     const response = await fetch(`${API}/validate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token })
+      credentials: "same-origin",
+      body: "{}"
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -212,7 +205,7 @@
   async function fetchPreferences(token) {
     const response = await fetch(PREFERENCES_API, {
       method: "GET",
-      headers: { Authorization: token }
+      credentials: "same-origin"
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -224,20 +217,20 @@
   }
 
   async function hydrateSharedPreferences(session) {
-    if (!session?.token) return session;
+    if (!session) return session;
     if (global.__APP_SHARED_PREFERENCES_HYDRATED__) return session;
 
     global.__APP_SHARED_PREFERENCES_HYDRATED__ = true;
     const startingPreferencesJson = JSON.stringify(normalisePreferences(session?.user?.preferences));
     try {
-      const preferences = await fetchPreferences(session.token);
-      const currentSession = getSharedSession();
+      const preferences = await fetchPreferences();
+      const currentSession = global.__APP_SESSION__ || getSharedSession();
       const currentPreferences = normalisePreferences(currentSession?.user?.preferences);
       const currentPreferencesJson = JSON.stringify(currentPreferences);
-      const nextPreferences = currentSession?.token === session.token && currentPreferencesJson !== startingPreferencesJson
+      const nextPreferences = currentPreferencesJson !== startingPreferencesJson
         ? { ...preferences, ...currentPreferences }
         : preferences;
-      const baseSession = currentSession?.token === session.token ? currentSession : session;
+      const baseSession = currentSession || session;
       return saveSharedSession({
         ...baseSession,
         user: {
@@ -251,30 +244,15 @@
   }
 
   async function refreshSession({ allowKiosk = false, propagateError = false } = {}) {
-    const shared = getSharedSession() || getLegacyTokenSession();
-    if (shared?.token) {
-      try {
-        const validated = await validateToken(shared.token);
-        let session = saveSharedSession(validated);
-        session = await hydrateSharedPreferences(session);
-        return session ? { ...session, scope: "shared" } : null;
-      } catch (error) {
-        clearSharedSession({ broadcast: false });
-        if (propagateError) throw error;
-      }
-    }
-
-    if (!allowKiosk) return null;
-
-    const kiosk = getKioskSession();
-    if (!kiosk?.token) return null;
-
     try {
-      const validated = await validateToken(kiosk.token);
-      const session = saveKioskSession(validated);
-      return session ? { ...session, scope: "kiosk" } : null;
+      const validated = await validateSession();
+      const isKiosk = validated.session_scope === "slideshow";
+      if (isKiosk && !allowKiosk) return null;
+      let session = isKiosk ? saveKioskSession(validated) : saveSharedSession(validated);
+      if (!isKiosk) session = await hydrateSharedPreferences(session);
+      return session ? { ...session, scope: isKiosk ? "kiosk" : "shared" } : null;
     } catch (error) {
-      clearKioskSession();
+      clearAllSessions({ broadcast: false });
       if (propagateError) throw error;
       return null;
     }
@@ -523,19 +501,42 @@
     return session;
   }
 
-  function startSlideshowKiosk() {
+  async function startSlideshowKiosk() {
     const shared = getSharedSession();
     if (!shared || !canAccess(shared.user, { role: "slideshow" })) return null;
-    const kiosk = saveKioskSession(shared);
+    const response = await authenticatedFetch(`${API}/session/kiosk`, { method: "POST" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "Could not start kiosk session");
+    const kiosk = saveKioskSession(data);
     clearSharedSession({ broadcast: true });
     return publishSession({ ...kiosk, scope: "kiosk" }, global.__APP_AUTH_BOOTSTRAP__?.config || {});
   }
 
   function getToken() {
-    return global.__APP_AUTH_BOOTSTRAP__?.token
-      || getSharedSession()?.token
-      || getKioskSession()?.token
+    return global.__APP_AUTH_BOOTSTRAP__?.csrf_token
+      || global.__APP_SESSION__?.csrf_token
+      || global.__APP_KIOSK_SESSION__?.csrf_token
       || null;
+  }
+
+  function authenticatedFetch(input, options = {}) {
+    const method = String(options.method || "GET").toUpperCase();
+    const headers = new Headers(options.headers || {});
+    if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+      const csrfToken = getToken();
+      if (!csrfToken) return Promise.reject(new Error("No active session"));
+      headers.set("X-CSRF-Token", csrfToken);
+    }
+    return fetch(input, { ...options, headers, credentials: "same-origin" });
+  }
+
+  async function logout() {
+    const csrfToken = getToken();
+    try {
+      if (csrfToken) await authenticatedFetch(`${API}/logout`, { method: "POST" });
+    } finally {
+      clearAllSessions({ broadcast: true });
+    }
   }
 
   function createPreferenceController({ pageKey, saveIntervalMs = PREFERENCE_SAVE_MS } = {}) {
@@ -613,25 +614,17 @@
 
       const snapshot = getDocument();
       const snapshotJson = JSON.stringify(snapshot);
-      const token = getToken();
-      if (!token) return false;
+      if (!getToken()) return false;
 
       const payload = { preferences: snapshot };
       flushPromise = (async () => {
         let saved = false;
         try {
-          if (useBeacon && global.navigator?.sendBeacon) {
-            const beaconPayload = JSON.stringify({ token, ...payload });
-            const blob = new Blob([beaconPayload], { type: "application/json" });
-            saved = global.navigator.sendBeacon(PREFERENCES_API, blob);
-          }
-
           if (!saved) {
-            const response = await fetch(PREFERENCES_API, {
+            const response = await authenticatedFetch(PREFERENCES_API, {
               method: "POST",
               headers: {
-                "Content-Type": "application/json",
-                Authorization: token
+                "Content-Type": "application/json"
               },
               body: JSON.stringify(payload),
               keepalive: Boolean(keepalive)
@@ -720,7 +713,7 @@
     clearAllSessions,
     clearKioskSession,
     refreshSession,
-    validateToken,
+    validateSession,
     hasRole,
     hasPermission,
     canAccess,
@@ -734,6 +727,8 @@
     protectPage,
     startSlideshowKiosk,
     getToken,
+    authenticatedFetch,
+    logout,
     getAppliedPreferences,
     setAppliedPreferences,
     createPreferenceController,

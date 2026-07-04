@@ -35,11 +35,7 @@
   const itemReferencePattern = /^\s*(.*?)\s*\[item:(\d+):(\d+)\]\s*$/;
 
   function getToken() {
-    return global.AppAuth?.getToken?.()
-      || localStorage.getItem("token")
-      || localStorage.getItem("maintenanceToken")
-      || localStorage.getItem("cashierToken")
-      || "";
+    return global.AppAuth?.getToken?.() || "";
   }
 
   function currentAuctionId() {
@@ -54,10 +50,10 @@
   }
 
   function request(path, options = {}) {
-    return fetch(`${API}${path}`, {
+    return window.AppAuth.authenticatedFetch(`${API}${path}`, {
       ...options,
       headers: {
-        Authorization: state.token,
+        "X-CSRF-Token": state.token,
         ...(options.body ? { "Content-Type": "application/json" } : {}),
         ...(options.headers || {})
       }
@@ -805,7 +801,7 @@
     const session = global.__APP_AUTH_READY__
       ? await global.__APP_AUTH_READY__
       : (global.__APP_AUTH_BOOTSTRAP__ || null);
-    state.token = session?.token || getToken();
+    state.token = session?.csrf_token || getToken();
     if (!state.token) return;
     if (!createButton()) return;
     createModal();

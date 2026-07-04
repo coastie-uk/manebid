@@ -159,6 +159,7 @@ backend/package-lock.json
 deploy-dev.sh
 package-lock.json
 backend/auction.env
+backend/manebid.env
 deploy-live.sh
 .github/copilot-instructions.md
 docs/deploy-web.sh

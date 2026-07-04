@@ -8,11 +8,13 @@
 const express = require('express');
 const multer = require('multer');
 const sharp = require('sharp');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
+const helmet = require('helmet');
+const { RateLimiterMemory } = require('rate-limiter-flexible');
 const { v4: uuidv4 } = require('uuid');
-const bodyParser = require('body-parser');
 var strftime = require('strftime');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
@@ -37,7 +39,6 @@ const {
   setUserPreferences,
   getAuditActor,
   getSessionInvalidBeforeValue,
-  isSessionTokenCurrent,
   normaliseUserPreferences
 } = require('./users');
 
@@ -51,6 +52,8 @@ const {
     allowedExtensions,
     SECRET_KEY,
     PORT,
+    HOST,
+    TRUSTED_PROXIES,
     LOG_LEVEL,
     MAX_ITEMS,
     PPTX_CONFIG_DIR,
@@ -58,7 +61,9 @@ const {
     CURRENCY_SYMBOL,
     RATE_LIMIT_WINDOW,
     RATE_LIMIT_MAX,
+    ITEM_PHOTO_MAX_BYTES,
     LOGIN_LOCKOUT_AFTER,
+    LOGIN_IP_LOCKOUT_AFTER,
     LOGIN_LOCKOUT,
     PASSWORD_MIN_LENGTH,
     ALLOWED_ORIGINS,
@@ -71,7 +76,9 @@ const {
   authenticateSession,
   authenticateRole,
   authenticateAccess,
-  attachDecodedUser
+  resolveSession,
+  hasValidCsrf,
+  SESSION_COOKIE_NAME
 } = require('./middleware/authenticateRole');
 
 const maintenanceRoutes = require('./maintenance');
@@ -84,32 +91,33 @@ const sessionTime = 12 * 60 * 60; // 12 hours
 
 const { api: paymentsApi, paymentProcessorVer } = require('./payments');
 
-const loginRateState = new Map();
-const loginLockoutState = new Map();
+const submissionRateLimiter = new RateLimiterMemory({
+  points: RATE_LIMIT_MAX,
+  duration: RATE_LIMIT_WINDOW,
+  blockDuration: RATE_LIMIT_WINDOW
+});
+const loginPairLimiter = new RateLimiterMemory({
+  points: LOGIN_LOCKOUT_AFTER,
+  duration: LOGIN_LOCKOUT,
+  blockDuration: LOGIN_LOCKOUT
+});
+const loginIpLimiter = new RateLimiterMemory({
+  points: LOGIN_IP_LOCKOUT_AFTER,
+  duration: LOGIN_LOCKOUT,
+  blockDuration: LOGIN_LOCKOUT
+});
 
 function getClientIp(req) {
   return req.ip || req.connection?.remoteAddress || 'unknown';
 }
 
-function checkRateLimit(req) {
-   // log('RateLimit', logLevels.DEBUG, `Checking rate limit for IP ${getClientIp(req)}, current state: ${JSON.stringify([...loginRateState])}, config: max ${RATE_LIMIT_MAX} per ${RATE_LIMIT_WINDOW}s`);
-  const ip = getClientIp(req);
-  const now = Date.now();
-  let entry = loginRateState.get(ip);
-
-  if (!entry || now - entry.windowStart >= (RATE_LIMIT_WINDOW * 1000)) {
-    entry = { windowStart: now, count: 0 };
+async function checkRateLimit(req) {
+  try {
+    await submissionRateLimiter.consume(getClientIp(req));
+    return { limited: false };
+  } catch (rate) {
+    return { limited: true, retryAfterMs: Number(rate?.msBeforeNext || RATE_LIMIT_WINDOW * 1000) };
   }
-
-  entry.count += 1;
-  loginRateState.set(ip, entry);
-
-  if (entry.count > RATE_LIMIT_MAX) {
-    const retryAfterMs = entry.windowStart + (RATE_LIMIT_WINDOW * 1000) - now;
-    return { limited: true, retryAfterMs: Math.max(retryAfterMs, 0) };
-  }
-
-  return { limited: false };
 }
 
 function getLockoutKey(req, username) {
@@ -199,44 +207,23 @@ function getItemEditState(item, auctionStatus) {
   };
 }
 
-function isLoginLockedOut(req, username) {
-  const now = Date.now();
-  const key = getLockoutKey(req, username);
-  const entry = loginLockoutState.get(key);
-
-  if (!entry) return { locked: false };
-  if (entry.lockedUntil && entry.lockedUntil > now) {
-    return { locked: true, retryAfterMs: entry.lockedUntil - now };
-  }
-
-  if (entry.lockedUntil && entry.lockedUntil <= now) {
-    loginLockoutState.set(key, { failures: 0, lockedUntil: 0 });
-  }
-
-  return { locked: false };
+async function isLoginLockedOut(req, username) {
+  const pair = await loginPairLimiter.get(getLockoutKey(req, username));
+  const ip = await loginIpLimiter.get(getClientIp(req));
+  const blocked = [pair, ip].filter((entry) => entry && entry.remainingPoints <= 0);
+  if (!blocked.length) return { locked: false };
+  return { locked: true, retryAfterMs: Math.max(...blocked.map((entry) => Number(entry.msBeforeNext || 0))) };
 }
 
-function recordLoginFailure(req, username) {
-  const now = Date.now();
-  const key = getLockoutKey(req, username);
-  let entry = loginLockoutState.get(key);
-
-  if (!entry || (entry.lockedUntil && entry.lockedUntil <= now)) {
-    entry = { failures: 0, lockedUntil: 0 };
-  }
-
-  entry.failures += 1;
-
-  if (entry.failures >= LOGIN_LOCKOUT_AFTER) {
-    entry.lockedUntil = now + (LOGIN_LOCKOUT * 1000);
-    entry.failures = 0;
-  }
-
-  loginLockoutState.set(key, entry);
+async function recordLoginFailure(req, username) {
+  await Promise.allSettled([
+    loginPairLimiter.consume(getLockoutKey(req, username)),
+    loginIpLimiter.consume(getClientIp(req))
+  ]);
 }
 
-function clearLoginFailures(req, username) {
-  loginLockoutState.delete(getLockoutKey(req, username));
+async function clearLoginFailures(req, username) {
+  await loginPairLimiter.delete(getLockoutKey(req, username));
 }
 
 function buildSessionUser(user, { includePreferences = false } = {}) {
@@ -257,23 +244,52 @@ function buildSessionUser(user, { includePreferences = false } = {}) {
   return sessionUser;
 }
 
-function issueSessionToken(user) {
-  const sessionUser = buildSessionUser(user);
+function issueSessionToken(user, { scope = 'operator' } = {}) {
   return jwt.sign({
-    username: user?.username || sessionUser.username,
-    role: sessionUser.role,
-    roles: sessionUser.roles,
-    permissions: sessionUser.permissions,
-    session_invalid_before: sessionUser.session_invalid_before,
-    is_root: sessionUser.is_root
-  }, SECRET_KEY, { expiresIn: sessionTime });
+    username: user?.username,
+    session_invalid_before: getSessionInvalidBeforeValue(user),
+    session_scope: scope,
+    csrf_token: crypto.randomBytes(32).toString('base64url')
+  }, SECRET_KEY, { algorithm: 'HS256', expiresIn: sessionTime });
 }
 
-function buildSessionResponse(user, token) {
+function getSessionCookieOptions() {
   return {
-    token,
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: '/',
+    maxAge: sessionTime * 1000
+  };
+}
+
+function setSessionCookie(res, token) {
+  res.cookie(SESSION_COOKIE_NAME, token, getSessionCookieOptions());
+}
+
+function clearSessionCookie(res) {
+  res.clearCookie(SESSION_COOKIE_NAME, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: '/'
+  });
+}
+
+function buildSessionResponse(user, decoded) {
+  const scopedUser = decoded?.session_scope === 'slideshow'
+    ? {
+        ...user,
+        roles: shapeUserAccess(user).roles.includes('slideshow') ? ['slideshow'] : [],
+        permissions: [],
+        is_root: 0
+      }
+    : user;
+  return {
+    csrf_token: decoded?.csrf_token || null,
+    session_scope: decoded?.session_scope || 'operator',
     currency: CURRENCY_SYMBOL,
-    landing_path: getLandingPath(user),
+    landing_path: getLandingPath(scopedUser),
     versions: {
       backend: backendVersion,
       schema: schemaVersion,
@@ -286,35 +302,12 @@ function buildSessionResponse(user, token) {
       restored_from_database_id: db.getMetadataValue('restored_from_database_id'),
       last_started_at: db.getMetadataValue('last_started_at')
     },
-    user: buildSessionUser(user, { includePreferences: true })
+    user: buildSessionUser(scopedUser, { includePreferences: true })
   };
 }
 
 function authenticatePreferencesRequest(req, res, next) {
-  const token = req.headers.authorization || req.body?.token;
-  if (!token || typeof token !== 'string') {
-    return res.status(403).json({ error: 'Access denied' });
-  }
-
-  jwt.verify(token, SECRET_KEY, (err, decoded) => {
-    if (err) {
-      return res.status(403).json({ error: 'Session expired' });
-    }
-
-    const currentUser = getUserByUsername(decoded?.username || '');
-    if (!currentUser) {
-      return res.status(403).json({ error: 'Session expired' });
-    }
-    if (!isSessionTokenCurrent(currentUser, decoded)) {
-      return res.status(403).json({ error: 'Session invalidated', reason: 'remote_logout' });
-    }
-
-    attachDecodedUser(req, {
-      username: currentUser.username,
-      ...buildSessionUser(currentUser)
-    });
-    return next();
-  });
+  return authenticateSession(req, res, next);
 }
 
 
@@ -337,6 +330,13 @@ log('General', logLevels.INFO, `Payment processor: ${paymentProcessorVer}`);
 
 setLogLevel(LOG_LEVEL.toUpperCase());
 
+app.disable('x-powered-by');
+app.set('trust proxy', TRUSTED_PROXIES);
+app.use(helmet({
+  contentSecurityPolicy: false,
+  strictTransportSecurity: false
+}));
+
 //--------------------------------------------------------------------------
 // CORS
 // Needed if the frontend and backend are separated
@@ -345,10 +345,13 @@ if (ENABLE_CORS) {
 const allowedOrigins = Array.isArray(ALLOWED_ORIGINS)
   ? Array.from(new Set(ALLOWED_ORIGINS))
   : [];
+if (allowedOrigins.length === 0) {
+  throw new Error('ENABLE_CORS requires at least one explicit ALLOWED_ORIGINS entry');
+}
 const corsOptions = {
   credentials: true,
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.length === 0) {
+    if (!origin) {
       return callback(null, true);
     }
     return allowedOrigins.includes(origin)
@@ -365,7 +368,7 @@ app.use(cors(corsOptions));
 
 
 // Then generic parsers and other routes
-app.use(express.json());
+app.use(express.json({ limit: '100kb' }));
 
 app.use((err, req, res, next) => {
   // Body parser error for invalid JSON
@@ -381,8 +384,7 @@ app.use((err, req, res, next) => {
   return next(err);
 });
 
-app.use(express.urlencoded({ extended: true }));
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: '100kb', parameterLimit: 100 }));
 
 app.use((req, res, next) => {
   if (req.path && req.path.startsWith('/maintenance')) {
@@ -422,9 +424,39 @@ const storage = multer.diskStorage({
         cb(null, uniqueName);
     },
 });
+function itemPhotoFileFilter(_req, file, callback) {
+  const extension = path.extname(file.originalname || '').toLowerCase();
+  const allowedMimeTypes = new Set(['image/jpeg', 'image/png']);
+  if (!allowedExtensionsSet.has(extension) || !allowedMimeTypes.has(String(file.mimetype || '').toLowerCase())) {
+    const error = new multer.MulterError('LIMIT_UNEXPECTED_FILE', file.fieldname);
+    error.message = 'Only JPEG and PNG item photos are accepted';
+    return callback(error);
+  }
+  return callback(null, true);
+}
 const upload = multer({
     storage: storage,
-    limits: { fileSize: (20000000) /* bytes */ }
+    limits: {
+      fileSize: ITEM_PHOTO_MAX_BYTES,
+      files: 1,
+      fields: 4,
+      parts: 6,
+      fieldNameSize: 64,
+      fieldSize: 4096
+    },
+    fileFilter: itemPhotoFileFilter
+});
+const adminUpload = multer({
+  storage,
+  limits: {
+    fileSize: ITEM_PHOTO_MAX_BYTES,
+    files: 1,
+    fields: 6,
+    parts: 8,
+    fieldNameSize: 64,
+    fieldSize: 4096
+  },
+  fileFilter: itemPhotoFileFilter
 });
 
 
@@ -436,58 +468,21 @@ if (!fs.existsSync(OUTPUT_DIR)) {
 
 //--------------------------------------------------------------------------
 // POST /validate
-// API to validate token. Used to check if stored session is valid
+// Validate the HttpOnly cookie session and return current account metadata.
 //--------------------------------------------------------------------------
 
 app.post('/validate', async (req, res) => {
-    const { token } = req.body;
-    if (!token) {
-        logFromRequest(req, logLevels.ERROR, `Token not provided`);
-
-        return res.status(403).json({ error: "No stored session" });
-    }
-    jwt.verify(token, SECRET_KEY, (err, decoded) => {
-        if (err) {
-            logFromRequest(req, logLevels.INFO, `Token invalid. session expired`);
-            return res.status(403).json({ error: "Session expired" });
-        }
-        const normalizedUsername = normaliseUsername(decoded?.username || '');
-        const currentUser = normalizedUsername ? getUserByUsername(normalizedUsername) : null;
-        if (!currentUser) {
-            logFromRequest(req, logLevels.WARN, `Validated token for missing user "${normalizedUsername || 'unknown'}"`);
-            return res.status(403).json({ error: "Session expired" });
-        }
-        if (!isSessionTokenCurrent(currentUser, decoded)) {
-            logFromRequest(req, logLevels.INFO, `Remote logout applied to ${currentUser.username}`);
-            return res.status(403).json({ error: "Session invalidated", reason: "remote_logout" });
-        }
-
-        const refreshedToken = issueSessionToken(currentUser);
-        const sessionUser = attachDecodedUser(req, {
-          username: currentUser.username,
-          ...buildSessionUser(currentUser)
-        });
-        res.json({
-            token: refreshedToken,
-            landing_path: getLandingPath(sessionUser),
-            versions: {
-              backend: backendVersion,
-              schema: schemaVersion,
-              payment_processor: paymentProcessorVer,
-              database_id: db.getMetadataValue('database_id'),
-              database_created_at: db.getMetadataValue('database_created_at'),
-              database_created_by_backend_version: db.getMetadataValue('database_created_by_backend_version'),
-              restored_at: db.getMetadataValue('restored_at'),
-              restored_from_backup_id: db.getMetadataValue('restored_from_backup_id'),
-              restored_from_database_id: db.getMetadataValue('restored_from_database_id'),
-              last_started_at: db.getMetadataValue('last_started_at')
-            },
-            user: buildSessionUser(sessionUser)
-        });
-      //  logFromRequest(req, logLevels.DEBUG, `Token validated successfully for user ${currentUser.username} `);
-
-
+  try {
+    const session = resolveSession(req);
+    req.session = session;
+    return res.json(buildSessionResponse(session.currentUser, session.decoded));
+  } catch (error) {
+    clearSessionCookie(res);
+    return res.status(error.status || 403).json({
+      error: error.message,
+      ...(error.reason ? { reason: error.reason } : {})
     });
+  }
 })
 
 //--------------------------------------------------------------------------
@@ -495,7 +490,7 @@ app.post('/validate', async (req, res) => {
 // Login route. Checks pw and returns a jwt
 // Also returns currency symbol + version data (as this route is the entry point to all users)
 //--------------------------------------------------------------------------
-app.post('/login', (req, res) => {
+app.post('/login', async (req, res) => {
     const { username, password } = req.body || {};
     const normalizedUsername = normaliseUsername(username);
 
@@ -509,7 +504,7 @@ app.post('/login', (req, res) => {
         return res.status(400).json({ error: "Invalid username format" });
     }
 
-    const lockout = isLoginLockedOut(req, normalizedUsername);
+    const lockout = await isLoginLockedOut(req, normalizedUsername);
     if (lockout.locked) {
         const retryAfterSeconds = Math.ceil(lockout.retryAfterMs / 1000);
         res.set('Retry-After', retryAfterSeconds.toString());
@@ -520,40 +515,41 @@ app.post('/login', (req, res) => {
     const user = getUserByUsername(normalizedUsername);
     if (!user || !user.password) {
       logFromRequest(req, logLevels.WARN, `Invalid credentials for ${normalizedUsername}`);
-      recordLoginFailure(req, normalizedUsername);
+      await recordLoginFailure(req, normalizedUsername);
       return res.status(403).json({ error: "Invalid username or password" });
     }
 
     const stored = user.password;
     const isHash = typeof stored === 'string' && stored.startsWith('$2');
 
-    const handleSuccess = () => {
-      const token = issueSessionToken(user);
-
-      res.json(buildSessionResponse(user, token));
-
+    const handleSuccess = async () => {
+      const currentUser = getUserByUsername(normalizedUsername);
+      const token = issueSessionToken(currentUser);
+      const decoded = jwt.decode(token);
+      setSessionCookie(res, token);
+      await clearLoginFailures(req, normalizedUsername);
+      res.json(buildSessionResponse(currentUser, decoded));
       logFromRequest(req, logLevels.INFO, `User "${user.username}" logged in`);
-      logFromRequest(req, logLevels.DEBUG, `full Token: ${token}....`);
     };
 
     if (isHash) {
-      bcrypt.compare(password, stored, (bErr, match) => {
-        if (bErr) return res.status(500).json({ error: bErr.message });
+      try {
+        const match = await bcrypt.compare(password, stored);
         if (!match) {
           logFromRequest(req, logLevels.WARN, `Invalid credentials for ${normalizedUsername}`);
-          recordLoginFailure(req, normalizedUsername);
+          await recordLoginFailure(req, normalizedUsername);
           return res.status(403).json({ error: "Invalid username or password" });
         }
-        clearLoginFailures(req, normalizedUsername);
         return handleSuccess();
-      });
-      return;
+      } catch (_error) {
+        return res.status(500).json({ error: 'Login failed' });
+      }
     }
 
     // Legacy plaintext user entries are upgraded after successful login.
     if (stored !== password) {
       logFromRequest(req, logLevels.WARN, `Invalid credentials for ${normalizedUsername}`);
-      recordLoginFailure(req, normalizedUsername);
+      await recordLoginFailure(req, normalizedUsername);
       return res.status(403).json({ error: "Invalid username or password" });
     }
 
@@ -565,8 +561,23 @@ app.post('/login', (req, res) => {
       logFromRequest(req, logLevels.ERROR, `Failed to upgrade plaintext password for ${user.username}: ${uErr.message}`);
     }
 
-    clearLoginFailures(req, normalizedUsername);
     return handleSuccess();
+});
+
+app.post('/logout', authenticateSession, (req, res) => {
+  clearSessionCookie(res);
+  return res.status(204).end();
+});
+
+app.post('/session/kiosk', authenticateSession, (req, res) => {
+  const currentUser = req.session.currentUser;
+  if (!shapeUserAccess(currentUser).roles.includes('slideshow')) {
+    return res.status(403).json({ error: 'Slideshow access is required' });
+  }
+  const token = issueSessionToken(currentUser, { scope: 'slideshow' });
+  const decoded = jwt.decode(token);
+  setSessionCookie(res, token);
+  return res.json(buildSessionResponse(currentUser, decoded));
 });
 
 app.post('/preferences', authenticatePreferencesRequest, (req, res) => {
@@ -645,29 +656,15 @@ app.post('/change-password', authenticateAccess({ roles: ROLE_LIST, permissions:
     }
 
     audit(getAuditActor(req), 'change own password', 'server', null, { username });
-        logFromRequest(req, logLevels.INFO, `Self-service password change for ${username}`);
+    logFromRequest(req, logLevels.INFO, `Self-service password change for ${username}`);
+    clearSessionCookie(res);
 
-    return res.json({ message: 'Password updated.' });
+    return res.json({ message: 'Password updated. Please sign in again.' });
   } catch (err) {
     logFromRequest(req, logLevels.ERROR, `Self-service password change failed for ${username}: ${err.message}`);
     return res.status(500).json({ error: 'Failed to change password' });
   }
 });
-
-//--------------------------------------------------------------------------
-// GET /slideshow-auth
-// Allows admin to retrieve slideshow credentials
-//--------------------------------------------------------------------------
-
-// app.get('/slideshow-auth', authenticateRole("admin"), (req, res) => {
-//     const role = 'slideshow';
-//     const token = jwt.sign({
-//       username: req.user?.username || 'unknown',
-//       role,
-//       roles: [role]
-//     }, SECRET_KEY, { expiresIn: sessionTime });
-//     res.json({ token });
-// });
 
 // Get the next item number for a given auction ID
 function getNextItemNumber(auction_id, callback) {
@@ -686,158 +683,111 @@ function getNextItemNumber(auction_id, callback) {
 // notable difference: uses :publicId not :auctionId - conversion handled in checkAuctionState
 
 app.post('/auctions/:publicId/newitem', checkAuctionState(['setup', 'locked', 'live']), async (req, res) => {
-    //    logFromRequest(req, logLevels.DEBUG, `Request received`);
-    try {
-        const auth = req.header(`Authorization`);
-        let is_admin = false;
-        let actor = 'public';
-        if (auth) {
-            try {
-                const decoded = jwt.verify(auth, SECRET_KEY);
-                req.user = decoded;
-                actor = decoded.username || decoded.role || 'admin';
-                is_admin = true;
-                logFromRequest(req, logLevels.DEBUG, `New item request (admin) passed check`);
-            } catch (err) {
-                return res.status(403).json({ error: "Not authorised" });
-            }
-        }
-
-        if (!is_admin) {
-            const rateLimit = checkRateLimit(req);
-            if (rateLimit.limited) {
-                const retryAfterSeconds = Math.ceil(rateLimit.retryAfterMs / 1000);
-                res.set('Retry-After', retryAfterSeconds.toString());
-                logFromRequest(req, logLevels.WARN, `Item submission rate limit exceeded from IP ${getClientIp(req)} (max ${RATE_LIMIT_MAX} per ${RATE_LIMIT_WINDOW}s)`);
-                return res.status(429).json({ error: "Too many submissions. Please try again in " + retryAfterSeconds.toString() + " seconds." }); // 429 Too Many Requests
-            }
-        }
-
-        await awaitMiddleware(upload.single('photo'))(req, res);
-
-
-        // Check item count first
-        db.get("SELECT COUNT(*) AS count FROM items", [], (err, row) => {
-            if (err) return res.status(500).json({ error: "Database error." });
-
-            if (row.count >= MAX_ITEMS) {
-                logFromRequest(req, logLevels.WARN, `Item limit reached. Maximum allowed is ${MAX_ITEMS}.`);
-                return res.status(400).json({ error: `Server item limit reached` });
-            }
-
-            let photoPath = req.file ? req.file.filename : null;
-            const { description, contributor, artist, notes } = req.body;
-            // auction_id is set in req by checkAuctionState
-            const auction_id = req.auction.id;
-        
-
-            logFromRequest(req, logLevels.DEBUG, `New item being added to auction id ${auction_id}`);
-
-            logFromRequest(req, logLevels.DEBUG, `Auction identified as ${req.auction.id} from checkAuctionState`);
-
-            const sanitisedDescription = sanitiseText(description, 1024);
-            const sanitisedContributor = sanitiseText(contributor, 512);
-            const sanitisedArtist = sanitiseText(artist, 512);
-            const sanitisedNotes = sanitiseText(notes, 1024);
-
-            if (!auction_id) {
-                logFromRequest(req, logLevels.ERROR, `Missing auction ID`);
-                return res.status(400).json({ error: "Missing auction ID" });
-
-            } else if (!sanitisedDescription || !sanitisedContributor) {
-                logFromRequest(req, logLevels.ERROR, `Missing item description or contributor`);
-                return res.status(400).json({ error: "Missing item description or contributor" });
-            }
-
-
-            // Check that the auction is active
-            db.get("SELECT status FROM auctions WHERE id = ?", [auction_id], async (err, row) => {
-                if (err) {
-                    logFromRequest(req, logLevels.ERROR, `Error checking auction status ${err.message}`);
-                    return res.status(500).json({ error: "Database error" });
-                }
-
-                if (!row) {
-                    return res.status(400).json({ error: "Auction not found" });
-                }
-
-                // checkAuctionState() has already checked for scenarios which shouldn't happen, so the test here is simpler
-                if (row.status !== "setup" && is_admin === false) {
-
-                    logFromRequest(req, logLevels.WARN, `Public submission rejected. Auction ${auction_id} is locked`);
-                    return res.status(403).json({ error: "This auction is not currently accepting submissions." });
-                }
-
-
-
-                if (photoPath) {
-                    // const resizedPath = `./uploads/resized_${photoPath}`;
-                    // const previewPath = `./uploads/preview_resized_${photoPath}`;
-
-                    const resizedPath = path.join(UPLOAD_DIR, `resized_${photoPath}`);
-                    const previewPath = path.join(UPLOAD_DIR, `preview_resized_${photoPath}`);
-
-                    const fileExtension = path.extname(req.file?.originalname || photoPath).toLowerCase();
-                    if (!allowedExtensionsSet.has(fileExtension)) {
-                        logFromRequest(req, logLevels.ERROR, `Invalid image extension: ${fileExtension}`);
-                        return res.status(400).json({ error: "Invalid image upload" });
-                    }
-
-                    try {
-                        await sharp(req.file.path).metadata(); // Will throw if not an image
-
-                        await sharp(req.file.path)
-                            .resize(2000, 2000, {
-                                fit: 'inside',
-                            })
-                            .jpeg({ quality: 90 })
-                            .toFile(resizedPath);
-
-                        await sharp(req.file.path)
-                            .resize(400, 400, {
-                                fit: 'inside'
-                            })
-                            .jpeg({ quality: 70 })
-                            .toFile(previewPath);
-
-                        fs.unlinkSync(req.file.path);
-                        photoPath = `resized_${photoPath}`;
-                        logFromRequest(req, logLevels.INFO, `Photo captured and saved`);
-                    } catch (err) {
-                        logFromRequest(req, logLevels.ERROR, `Photo processing failed: ${err.message}`);
-                        return res.status(400).json({ error: "Invalid image upload" });
-                    }
-
-                }
-
-
-                // get the next item number
-                getNextItemNumber(auction_id, (err, itemNumber) => {
-                    if (err) {
-                        return res.status(500).json({ error: "Database error" });
-                    }
-
-                    db.run(`INSERT INTO items (item_number, description, contributor, artist, notes, photo, auction_id, date) VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%d-%m-%Y %H:%M:%S', 'now', 'localtime'))`,
-                        [itemNumber, sanitisedDescription, sanitisedContributor, sanitisedArtist, sanitisedNotes, photoPath, auction_id],
-                        function (err) {
-                            if (err) {
-                                logFromRequest(req, logLevels.ERROR, `Database error ${err.message}`);
-                                return res.status(500).json({ error: err.message });
-
-                            }
-                            res.json({ id: this.lastID, sanitisedDescription, sanitisedContributor, sanitisedArtist, photo: photoPath });
-                            logFromRequest(req, logLevels.INFO, `Item ${this.lastID} stored for auction ${auction_id} as item #${itemNumber}`);
-                            audit(is_admin ? getAuditActor(req) || actor : 'public', 'new item', 'item', this.lastID, { description: sanitisedDescription, initial_number: itemNumber });
-
-                        }
-                    );
-                })
-            });
-        })
-
-    } catch (error) {
-        return res.status(500).json({ error: error.message });
+  let originalPath = null;
+  const derivativePaths = [];
+  let keepDerivatives = false;
+  try {
+    let isAdmin = false;
+    if (req.get('X-CSRF-Token')) {
+      const session = resolveSession(req);
+      if (!hasValidCsrf(req, session.decoded) || !session.user.roles.includes('admin')) {
+        return res.status(403).json({ error: 'Not authorised' });
+      }
+      req.session = session;
+      isAdmin = true;
     }
+
+    if (!isAdmin) {
+      const rateLimit = await checkRateLimit(req);
+      if (rateLimit.limited) {
+        const retryAfterSeconds = Math.ceil(rateLimit.retryAfterMs / 1000);
+        res.set('Retry-After', retryAfterSeconds.toString());
+        logFromRequest(req, logLevels.WARN, `Item submission rate limit exceeded from IP ${getClientIp(req)}`);
+        return res.status(429).json({ error: `Too many submissions. Please try again in ${retryAfterSeconds} seconds.` });
+      }
+    }
+
+    await awaitMiddleware(upload.single('photo'))(req, res);
+    originalPath = req.file?.path || null;
+
+    const auctionId = Number(req.auction?.id);
+    const auction = db.prepare('SELECT status FROM auctions WHERE id = ?').get(auctionId);
+    if (!auctionId || !auction) {
+      return res.status(400).json({ error: 'Auction not found' });
+    }
+    if (auction.status !== 'setup' && !isAdmin) {
+      return res.status(403).json({ error: 'This auction is not currently accepting submissions.' });
+    }
+
+    const itemCount = db.prepare('SELECT COUNT(*) AS count FROM items').get().count;
+    if (itemCount >= MAX_ITEMS) {
+      return res.status(400).json({ error: 'Server item limit reached' });
+    }
+
+    const sanitisedDescription = sanitiseText(req.body?.description, 1024);
+    const sanitisedContributor = sanitiseText(req.body?.contributor, 512);
+    const sanitisedArtist = sanitiseText(req.body?.artist, 512);
+    const sanitisedNotes = sanitiseText(req.body?.notes, 1024);
+    if (!sanitisedDescription || !sanitisedContributor) {
+      return res.status(400).json({ error: 'Missing item description or contributor' });
+    }
+
+    let photoPath = null;
+    if (req.file) {
+      const metadata = await sharp(req.file.path).metadata();
+      if (!['jpeg', 'png'].includes(metadata.format)) {
+        return res.status(400).json({ error: 'Invalid image upload' });
+      }
+      const resizedName = `resized_${req.file.filename}`;
+      const previewName = `preview_resized_${req.file.filename}`;
+      const resizedPath = path.join(UPLOAD_DIR, resizedName);
+      const previewPath = path.join(UPLOAD_DIR, previewName);
+      derivativePaths.push(resizedPath, previewPath);
+      await sharp(req.file.path).resize(2000, 2000, { fit: 'inside' }).jpeg({ quality: 90 }).toFile(resizedPath);
+      await sharp(req.file.path).resize(400, 400, { fit: 'inside' }).jpeg({ quality: 70 }).toFile(previewPath);
+      photoPath = resizedName;
+    }
+
+    const itemNumber = db.prepare(`
+      SELECT COALESCE(MAX(item_number), 0) + 1 AS next
+      FROM items WHERE auction_id = ? AND ${ACTIVE_ITEM_WHERE}
+    `).get(auctionId).next;
+    const result = db.prepare(`
+      INSERT INTO items (item_number, description, contributor, artist, notes, photo, auction_id, date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%d-%m-%Y %H:%M:%S', 'now', 'localtime'))
+    `).run(itemNumber, sanitisedDescription, sanitisedContributor, sanitisedArtist, sanitisedNotes, photoPath, auctionId);
+
+    keepDerivatives = true;
+    logFromRequest(req, logLevels.INFO, `Item ${result.lastInsertRowid} stored for auction ${auctionId} as item #${itemNumber}`);
+    audit(isAdmin ? getAuditActor(req) : 'public', 'new item', 'item', result.lastInsertRowid, {
+      description: sanitisedDescription,
+      initial_number: itemNumber
+    });
+    return res.json({
+      id: result.lastInsertRowid,
+      sanitisedDescription,
+      sanitisedContributor,
+      sanitisedArtist,
+      photo: photoPath
+    });
+  } catch (error) {
+    if (error instanceof multer.MulterError) {
+      const status = error.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+      return res.status(status).json({ error: error.message });
+    }
+    if (error.status === 403) {
+      return res.status(403).json({ error: error.message });
+    }
+    logFromRequest(req, logLevels.ERROR, `Item submission failed: ${error.message}`);
+    return res.status(400).json({ error: 'Item submission failed' });
+  } finally {
+    if (originalPath) {
+      fs.rmSync(originalPath, { force: true });
+    }
+    if (!keepDerivatives) {
+      derivativePaths.forEach((filePath) => fs.rmSync(filePath, { force: true }));
+    }
+  }
 });
 
 //--------------------------------------------------------------------------
@@ -1007,7 +957,10 @@ app.post('/auctions/:auctionId/items/:id/update', authenticateRole("admin"), che
 
 try {
     
-  await awaitMiddleware(upload.single('photo'))(req, res);
+  await awaitMiddleware(adminUpload.single('photo'))(req, res);
+  if (req.file?.path) {
+    res.once('finish', () => fs.rmSync(req.file.path, { force: true }));
+  }
 
     db.get('SELECT photo, auction_id, description, contributor, artist, notes, winning_bidder_id, hammer_price, is_deleted FROM items WHERE id = ?', [id], async (err, row) => {
         if (err) {
@@ -1036,7 +989,7 @@ try {
 
         // Process new photo
         if (req.file) {
-            let targetFilename = row.photo?.startsWith("resized_") ? row.photo : `resized_${uuidv4()}.jpg`;
+           const targetFilename = `resized_${uuidv4()}.jpg`;
 
            const resizedPath = path.join(UPLOAD_DIR, targetFilename);
            const previewPath = path.join(UPLOAD_DIR, `preview_${targetFilename}`);
@@ -1056,27 +1009,15 @@ try {
                     .jpeg({ quality: 70 })
                     .toFile(previewPath);
 
-                fs.unlinkSync(req.file.path);
-
-                if (row.photo && row.photo !== targetFilename) {
-                    // const oldFull = `./uploads/${row.photo}`;
-                    // const oldPreview = `./uploads/preview_${row.photo}`;
-
-                    const oldFull = path.join(UPLOAD_DIR, row.photo);
-                    const oldPreview = path.join(UPLOAD_DIR, `preview_${row.photo}`);
-
-
-                    if (fs.existsSync(oldFull)) fs.unlinkSync(oldFull);
-                    if (fs.existsSync(oldPreview)) fs.unlinkSync(oldPreview);
-                }
-
                 photoPath = targetFilename;
                 logFromRequest(req, logLevels.INFO, `Photo updated → ${targetFilename}`);
 
             } catch (err) {
                 logFromRequest(req, logLevels.ERROR, `Image procesing failed`);
 
-                fs.unlinkSync(req.file.path); // cleanup
+                fs.rmSync(req.file.path, { force: true });
+                fs.rmSync(resizedPath, { force: true });
+                fs.rmSync(previewPath, { force: true });
                 res.status(400).json({ error: 'Invalid image file' });
                 return;
             }
@@ -1123,7 +1064,15 @@ try {
             db.run(sql, params, function (err5) {
                 if (err5) {
                     logFromRequest(req, logLevels.ERROR, `Update failed: ${err5.message}`);
-                    return res.status(500).json({ error: err5.message });
+                    if (req.file) {
+                        fs.rmSync(path.join(UPLOAD_DIR, photoPath), { force: true });
+                        fs.rmSync(path.join(UPLOAD_DIR, `preview_${photoPath}`), { force: true });
+                    }
+                    return res.status(500).json({ error: "Database error" });
+                }
+                if (req.file && row.photo && row.photo !== photoPath) {
+                    fs.rmSync(path.join(UPLOAD_DIR, row.photo), { force: true });
+                    fs.rmSync(path.join(UPLOAD_DIR, `preview_${row.photo}`), { force: true });
                 }
                 res.json({ message: 'Item updated', photo: photoPath });
                 logFromRequest(req, logLevels.INFO, `Update item completed for ${id}`);
@@ -1139,7 +1088,11 @@ try {
     }
     catch (err) {
         logFromRequest(req, logLevels.ERROR, "Error editing: " + err.message);
-        res.status(500).json({ error: err.message });
+        if (req.file?.path) fs.rmSync(req.file.path, { force: true });
+        if (err instanceof multer.MulterError) {
+            return res.status(err.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ error: err.message });
+        }
+        res.status(500).json({ error: "Failed to update item" });
     }
 
 });
@@ -1497,12 +1450,10 @@ app.get('/slideshow/auctions', authenticateRole("slideshow"), (req, res) => {
 // POST /validate-auction
 // API to check whether the publically entered auction short name exists and is active
 // This is a public endpoint and does not expose auction IDs
-// It also accepts an auth token to allow bypass of the state check - This is needed for the slideshow
 //--------------------------------------------------------------------------
 
 app.post("/validate-auction", async (req, res) => {
     const { short_name } = req.body;
-    const auth = req.header(`Authorization`);
     if (!short_name || typeof short_name !== 'string'|| short_name.trim() === ''|| short_name.length > 64) {
         logFromRequest(req, logLevels.ERROR, `No or bad auction name received`);
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -1510,32 +1461,6 @@ app.post("/validate-auction", async (req, res) => {
     }
     const sanitised_short_name = sanitiseText(short_name, 64);
     logFromRequest(req, logLevels.DEBUG, `Auction name received: ${short_name}`);
-
-    let canBypassStateCheck = false;
-    if (auth) {
-        try {
-            const decoded = jwt.verify(auth, SECRET_KEY);
-            const tokenRoles = new Set();
-            if (typeof decoded?.role === 'string') tokenRoles.add(String(decoded.role).trim().toLowerCase());
-            if (Array.isArray(decoded?.roles)) {
-              decoded.roles.forEach((role) => {
-                if (typeof role === 'string') tokenRoles.add(String(role).trim().toLowerCase());
-              });
-            }
-            if (decoded?.is_root === true || decoded?.is_root === 1) {
-              ROLE_LIST.forEach((role) => tokenRoles.add(role));
-            }
-
-            canBypassStateCheck = tokenRoles.has('slideshow') || tokenRoles.has('admin') || tokenRoles.has('maintenance');
-            if (!canBypassStateCheck) {
-              logFromRequest(req, logLevels.WARN, `Validate-auction auth token lacks bypass role`);
-              return res.status(403).json({ error: "Not authorised" });
-            }
-            logFromRequest(req, logLevels.DEBUG, `Validate-auction bypass accepted for role set: ${Array.from(tokenRoles).join(',')}`);
-        } catch (err) {
-            return res.status(403).json({ error: "Not authorised" });
-        }
-    }
 
     try {
 
@@ -1552,7 +1477,7 @@ app.post("/validate-auction", async (req, res) => {
                 return res.status(400).json({ valid: false, error: "Auction name not found" });
             }
                 // admin override to support slideshow function
-            else if (row.status !== `setup` && !canBypassStateCheck) {
+            else if (row.status !== `setup`) {
                 logFromRequest(req, logLevels.INFO, `Auction "${short_name}" not active (status: ${row.status})`);
                 return res.status(400).json({
                     valid: false,
@@ -1563,8 +1488,7 @@ app.post("/validate-auction", async (req, res) => {
                 });
             }
 
-            if (!canBypassStateCheck) logFromRequest(req, logLevels.INFO, `Auction "${short_name}" exists and accepting submissions`);
-            if (canBypassStateCheck) logFromRequest(req, logLevels.INFO, `Auction "${short_name}" exists - state check ignored as authorised token supplied`);
+            logFromRequest(req, logLevels.INFO, `Auction "${short_name}" exists and accepting submissions`);
 
             res.json({ valid: true, short_name: row.short_name, full_name: row.full_name, logo: row.logo, public_id: row.public_id });
         }
@@ -2026,13 +1950,13 @@ app.use('/maintenance', authenticateRole("maintenance"), (req, res, next) => {
 });
 
 // Start the server
-const server = app.listen(PORT, () => {
-    log('General', logLevels.INFO, 'Server startup complete and listening on port ' + PORT);
+const server = app.listen(PORT, HOST, () => {
+    log('General', logLevels.INFO, `Server startup complete and listening on ${HOST}:${PORT}`);
 });
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-      log('General', logLevels.ERROR, `❌ Port ${port} is already in use. Please stop the other process or use a different port.`);
+      log('General', logLevels.ERROR, `❌ Port ${PORT} is already in use. Please stop the other process or use a different port.`);
       process.exit(1);
   } else {
     console.error('❌ Server error:', err);

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Operator Login | ManeBid — Convention Auction Manager</title>
   <link rel="stylesheet" href="/styles/admin-styles.css">
@@ -38,7 +39,7 @@
   </main>
 
   <script src="/scripts/banner.js"></script>
-  <script src="/scripts/session-auth.js"></script>
+  <script src="/scripts/session-auth.js?v=2026-07-02-csrf-1"></script>
   <script src="/scripts/login.js"></script>
 </body>
 </html>

@@ -100,7 +100,7 @@ The backend reads SumUp configuration from environment variables.
 
 ### 3.1 Required variables
 
-Populate these in your `auction.env` file (see auction.env.example for a template)
+Populate these in your `manebid.env` file (see `manebid.env.example` for a template).
 
 ```env
 # SumUp: API for online payments

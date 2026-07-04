@@ -5,7 +5,7 @@ const API = "/api"
 const API_ROOT = `${API}/settlement`;
   const POLL_MS  = 5000;
   const BUYER_DISPLAY_STATE_KEY = 'cashierBuyerDisplayState';
-  let token = localStorage.getItem('cashierToken');
+  let token = window.AppAuth?.getToken?.() || null;
   const cashierPreferences = window.AppAuth?.getAppliedPreferences?.().cashier || {};
 
   let bidders = [];
@@ -33,6 +33,9 @@ const API_ROOT = `${API}/settlement`;
   const uploadBase = "/api/uploads";
   let currentUsername = 'unknown';
   let fingerprintVisible = false;
+  let fetchBiddersInFlight = false;
+  let bidderListRenderKey = '';
+  let selectedBidderRenderKey = '';
   const receiptDateTime = value => new Date(value).toLocaleString('en-GB', {
     day: '2-digit',
     month: '2-digit',
@@ -73,13 +76,7 @@ const API_ROOT = `${API}/settlement`;
   async function fetchCurrentUsername() {
     if (!token) return;
     try {
-      const res = await fetch(`${API}/validate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ token })
-      });
+      const res = await window.AppAuth.authenticatedFetch(`${API}/validate`, { method: 'POST' });
       if (!res.ok) return;
       const data = await res.json();
       currentUsername = data?.user?.username || currentUsername;
@@ -366,29 +363,40 @@ const API_ROOT = `${API}/settlement`;
   }
 
   async function fetchBidders(){
-    const res = await fetch(`${API_ROOT}/bidders?auction_id=${AUCTION_ID}`, { headers:{ Authorization:token }});
-    bidders = await res.json();
-
-    renderBidders();
-    if(selBidder){
-      const updated = bidders.find(b=>b.id===selBidder.id);
-      if(updated) {
-        await selectBidder(updated, { preserveUiState: true });
-      } else {
-        selectBidder(null, { preserveUiState: true });
+    if (fetchBiddersInFlight) return;
+    fetchBiddersInFlight = true;
+    try {
+      const res = await window.AppAuth.authenticatedFetch(`${API_ROOT}/bidders?auction_id=${AUCTION_ID}`, { headers:{ "X-CSRF-Token":token }});
+      if (!res.ok) {
+        throw new Error(`Bidder refresh failed (${res.status})`);
       }
-      return;
+      bidders = await res.json();
+
+      renderBidders();
+      if(selBidder){
+        const updated = bidders.find(b=>b.id===selBidder.id);
+        if(updated) {
+          await selectBidder(updated, { preserveUiState: true });
+        } else {
+          await selectBidder(null, { preserveUiState: true });
+        }
+        return;
+      }
+      persistBuyerDisplayState();
+    } catch (error) {
+      console.error("[payments] Bidder refresh failed:", error);
+    } finally {
+      fetchBiddersInFlight = false;
     }
-    persistBuyerDisplayState();
   }
 
   async function saveSelectedBidderName(name) {
     if (!selBidder?.id) throw new Error('Select a bidder first');
-    const response = await fetch(`${API}/auctions/${AUCTION_ID}/bidders/${selBidder.id}`, {
+    const response = await window.AppAuth.authenticatedFetch(`${API}/auctions/${AUCTION_ID}/bidders/${selBidder.id}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: token
+        "X-CSRF-Token": token
       },
       body: JSON.stringify({ name })
     });
@@ -468,7 +476,7 @@ async function refreshPaymentButtons() {
   }
 
   try {
-    const res = await fetch(`${API_ROOT}/payment-methods`, { headers: { Authorization: token } });
+    const res = await window.AppAuth.authenticatedFetch(`${API_ROOT}/payment-methods`, { headers: { "X-CSRF-Token": token } });
 
     if (!res.ok) {
       // Fail-safe: disable all buttons if we can’t confirm what’s allowed
@@ -560,11 +568,25 @@ buttons.forEach(btn => {
   }
 }
 
-  
-  function renderBidders(){
-   
-    bidderBody.innerHTML='';
-    sortBidders(bidders).forEach(b=>{
+
+  function getBidderListRenderKey(sortedBidders) {
+    return JSON.stringify(sortedBidders.map((bidder) => ({
+      id: bidder.id,
+      label: formatBidderLabel(bidder),
+      balance: Number(bidder.balance || 0),
+      paymentStatus: getPaymentStatus(bidder),
+      selected: (selectedBidderId ?? selBidder?.id) === bidder.id
+    })));
+  }
+
+  function renderBidders({ force = false } = {}){
+    const sortedBidders = sortBidders(bidders);
+    const nextRenderKey = getBidderListRenderKey(sortedBidders);
+    if (!force && nextRenderKey === bidderListRenderKey) return;
+    bidderListRenderKey = nextRenderKey;
+
+    bidderBody.replaceChildren();
+    sortedBidders.forEach(b=>{
       const tr=document.createElement('tr');
       tr.className=`bidder-row ${getPaymentStatusClass(b)}`;
       if(b.balance===0) tr.classList.add('bidder-paid');
@@ -576,9 +598,6 @@ buttons.forEach(btn => {
       if((selectedBidderId ?? selBidder?.id)===b.id) tr.classList.add('sel');
       bidderBody.appendChild(tr);
     });
-
-
-
   }
 
   async function selectBidder(b, options = {}){
@@ -586,6 +605,7 @@ buttons.forEach(btn => {
     if(!b){
       selectedBidderId = null;
       selBidder=null;
+      selectedBidderRenderKey = '';
       renderBidders();
       detailBox.style.display='none';
       if (emptyDetailEl) emptyDetailEl.style.display = 'block';
@@ -604,12 +624,12 @@ buttons.forEach(btn => {
     selectedBidderId = b.id;
     renderBidders();
 
-    const res = await fetch(`${API_ROOT}/bidders/${b.id}?auction_id=${AUCTION_ID}`, { headers:{ Authorization:token }});
+    const res = await window.AppAuth.authenticatedFetch(`${API_ROOT}/bidders/${b.id}?auction_id=${AUCTION_ID}`, { headers:{ "X-CSRF-Token":token }});
 
             // Check for 403 (unauthorized)
         if (res.status === 403) {
             showMessage("Session expired. Please log in again.", "info");
-            localStorage.removeItem("cashierToken");
+            window.AppAuth?.clearAllSessions?.({ broadcast: false });
             setTimeout(() => {
                 window.location.reload();
             }, 1500);
@@ -622,11 +642,20 @@ buttons.forEach(btn => {
       renderBidders();
       return;
     }
-    selBidder = await res.json();
+    const nextSelectedBidder = await res.json();
+    const nextSelectedBidderRenderKey = JSON.stringify(nextSelectedBidder);
+    const detailsChanged = nextSelectedBidderRenderKey !== selectedBidderRenderKey;
+    selBidder = nextSelectedBidder;
     selectedBidderId = selBidder.id;
     if (!preserveUiState) fingerprintVisible = false;
 
     renderBidders();
+
+    if (preserveUiState && !detailsChanged) {
+      persistBuyerDisplayState();
+      return;
+    }
+    selectedBidderRenderKey = nextSelectedBidderRenderKey;
 
     titleEl.textContent=formatBidderLabel(selBidder, { prefix: true });
     if (editBidderNameBtn) {
@@ -638,7 +667,7 @@ buttons.forEach(btn => {
 
     renderLots();
     renderPayments();
-    
+
 
     if (AUCTION_STATUS === 'settlement') {
 document.getElementById('payButtons').classList.remove('disabled');
@@ -648,7 +677,7 @@ updatePaymentStateTooltip(true);
 
 
   } else {
-  
+
 document.querySelectorAll('#payButtons button[data-method]').forEach(btn => btn.disabled = true);
 document.querySelectorAll('.delPay').forEach(btn => btn.disabled = true);
 document.getElementById('payButtons').classList.add('disabled');
@@ -754,7 +783,7 @@ updateTotals();
 
 
 
-  
+
 
   // ---------- SumUp integration helper ----------
   async function startSumupPayment(amt, donation, note, mode = 'app') {
@@ -773,11 +802,11 @@ updateTotals();
     }
 
     try {
-      const response = await fetch(`${API}/payments/intents`, {
+      const response = await window.AppAuth.authenticatedFetch(`${API}/payments/intents`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: token   
+          "X-CSRF-Token": token
         },
         body: JSON.stringify({
           bidder_id: selBidder.id,
@@ -813,7 +842,7 @@ updateTotals();
      window.open(url, '_blank', 'noopener');
 
 
-  
+
         showMessage(
           'SumUp payment started. Complete the card payment in the SumUp app, then refresh to see the updated balance.',
           'info'
@@ -854,8 +883,8 @@ overlay.querySelector('#amt').focus();
         if (modal.canceled) {
             showMessage("Refund cancelled", "info");
             return;
-        } else { 
-    
+        } else {
+
        reversePayment(id, amt, reason, ``)
       .then(() => {
         showMessage('Refund applied successfully', 'info');
@@ -949,11 +978,11 @@ overlay.querySelector('#amt').focus();
   // }
 
      try {
-      const response = await fetch(`${API_ROOT}/payment/${AUCTION_ID}`,{
+      const response = await window.AppAuth.authenticatedFetch(`${API_ROOT}/payment/${AUCTION_ID}`,{
         method:'POST',
         headers:{
           'Content-Type':'application/json',
-          Authorization:token},
+          "X-CSRF-Token":token},
         body:JSON.stringify({
           auction_id: AUCTION_ID,
           bidder_id:selBidder.id,
@@ -973,17 +1002,17 @@ overlay.querySelector('#amt').focus();
       overlay.remove();fetchBidders();}; }
 
 async function reversePayment(paymentId, amount, reason, note) {
-  const res = await fetch(`${API_ROOT}/payment/${paymentId}/reverse`, {
+  const res = await window.AppAuth.authenticatedFetch(`${API_ROOT}/payment/${paymentId}/reverse`, {
     method: 'POST',
     headers: {
-          Authorization: token,
+          "X-CSRF-Token": token,
           "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      amount,   
-      reason,   
+      amount,
+      reason,
       note,
-      auction_id: AUCTION_ID      
+      auction_id: AUCTION_ID
     })
   });
 
@@ -1005,8 +1034,8 @@ async function reversePayment(paymentId, amount, reason, note) {
     /* ---------- CSV download with auth header ---------- */
     document.getElementById('csv').onclick = async () => {
       try {
-        const res = await fetch(`${API_ROOT}/export.csv?auction_id=${AUCTION_ID}`, {
-          headers: { Authorization: token }
+        const res = await window.AppAuth.authenticatedFetch(`${API_ROOT}/export.csv?auction_id=${AUCTION_ID}`, {
+          headers: { "X-CSRF-Token": token }
         });
         if (!res.ok) throw new Error('CSV fetch failed');
         const blob = await res.blob();
@@ -1023,8 +1052,8 @@ async function reversePayment(paymentId, amount, reason, note) {
 
 /* ---------- summary modal ---------- */
 document.getElementById('summaryBtn').onclick = async () => {
-  const res = await fetch(`${API_ROOT}/summary?auction_id=${AUCTION_ID}`, {
-    headers:{ Authorization: token }
+  const res = await window.AppAuth.authenticatedFetch(`${API_ROOT}/summary?auction_id=${AUCTION_ID}`, {
+    headers:{ "X-CSRF-Token": token }
   });
   if (!res.ok) { showMessage('Cannot fetch summary', 'error'); return; }
   const s = await res.json();

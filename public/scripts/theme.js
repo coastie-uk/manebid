@@ -112,11 +112,11 @@
     if (!token) return false;
 
     try {
-      const response = await fetch(global.AppAuth?.PREFERENCES_API || "/api/preferences", {
+      const response = await window.AppAuth.authenticatedFetch(global.AppAuth?.PREFERENCES_API || "/api/preferences", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: token
+          "X-CSRF-Token": token
         },
         body: JSON.stringify({ preferences: nextPreferences }),
         keepalive: true

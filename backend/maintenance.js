@@ -22,7 +22,7 @@ const { sanitiseText } = require('./middleware/sanitiseText');
 const sharp = require("sharp");
 const QRCode = require("qrcode");
 const db = require('./db');
-const archiver = require("archiver");
+const { ZipArchive } = require("archiver");
 const logFilePath = path.join(LOG_DIR, LOG_NAME);
 const logLines = 500;
 const CONFIG_PATHS = {
@@ -1385,7 +1385,7 @@ router.post("/backup", async (req, res) => {
 
     await new Promise((resolve, reject) => {
       const output = fs.createWriteStream(archivePath);
-      const archive = archiver("zip", { zlib: { level: 9 } });
+      const archive = new ZipArchive({ zlib: { level: 9 } });
 
       output.on("close", resolve);
       output.on("error", reject);
@@ -2018,7 +2018,7 @@ router.get("/export", (req, res) => {
     const now = new Date();
     const timestamp = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
     const filename = `auction_export_${timestamp}.zip`;
-    const archive = archiver("zip", { zlib: { level: 9 } });
+    const archive = new ZipArchive({ zlib: { level: 9 } });
 
     res.setHeader("Content-Type", "application/zip");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
@@ -2672,7 +2672,7 @@ router.get("/logs", (req, res) => {
 
 // router.get("/download-full", (req, res) => {
 //   logFromRequest(req, logLevels.DEBUG, `Full download requested`);
-//   const archive = archiver("zip", { zlib: { level: 9 } });
+//   const archive = new ZipArchive({ zlib: { level: 9 } });
 
 //   const now = new Date();
 //   const timestamp = now.toISOString().replace(/[:.]/g, "-").slice(0, 19); // e.g. 2024-04-10T14-33-58

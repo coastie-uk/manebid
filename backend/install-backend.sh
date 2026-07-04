@@ -6,14 +6,24 @@ SCRIPT_NAME="$(basename "$0")"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_BACKEND_DIR="$SCRIPT_DIR"
 SOURCE_CONFIG="$SOURCE_BACKEND_DIR/config.json"
-SOURCE_ENV_EXAMPLE="$SOURCE_BACKEND_DIR/auction.env.example"
-SOURCE_SERVICE="$SOURCE_BACKEND_DIR/auction-backend.service"
+SOURCE_ENV_EXAMPLE="$SOURCE_BACKEND_DIR/manebid.env.example"
+SOURCE_SERVICE="$SOURCE_BACKEND_DIR/manebid-backend.service"
 
 DRY_RUN=0
-DEFAULT_BACKEND_DIR="/opt/auction"
-DEFAULT_ENV_DIR="/etc/auction"
-SERVICE_USER="auction"
-SERVICE_GROUP="auction"
+DEFAULT_BACKEND_DIR="/opt/manebid"
+DEFAULT_ENV_DIR="/etc/manebid"
+DEFAULT_CONFIG_IMG_DIR="/var/lib/manebid/resources"
+DEFAULT_BACKUP_DIR="/var/lib/manebid/backup"
+DEFAULT_UPLOAD_DIR="/var/lib/manebid/uploads"
+DEFAULT_PPTX_CONFIG_DIR="/var/lib/manebid"
+DEFAULT_OUTPUT_DIR="/var/lib/manebid/output"
+DEFAULT_DB_PATH="/var/lib/manebid"
+DEFAULT_DB_NAME="manebid.db"
+DEFAULT_LOG_DIR="/var/log/manebid"
+DEFAULT_LOG_NAME="manebid.log"
+DEFAULT_SERVICE_NAME="manebid-backend"
+SERVICE_USER="manebid"
+SERVICE_GROUP="manebid"
 
 PENDING_COMMANDS=()
 WARNINGS=()
@@ -61,7 +71,7 @@ shell_quote() {
 
 first_run_command() {
   local inner
-  inner="cd $(shell_quote "$BACKEND_DIR") && AUCTION_ENV_FILE=$(shell_quote "$ENV_FILE") NODE_ENV=production node backend.js"
+  inner="cd $(shell_quote "$BACKEND_DIR") && MANEBID_ENV_FILE=$(shell_quote "$ENV_FILE") NODE_ENV=production node backend.js"
   if can_write_target "$BACKEND_DIR"; then
     printf '%s' "$inner"
   else
@@ -115,7 +125,7 @@ join_unique_paths() {
 
 ensure_staging_dir() {
   if [ -z "$STAGING_DIR" ]; then
-    STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/auction-install.${SERVICE_NAME:-auction}.XXXXXX")"
+    STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/manebid-install.${SERVICE_NAME:-manebid}.XXXXXX")"
     chmod 700 "$STAGING_DIR" 2>/dev/null || true
   fi
 }
@@ -123,16 +133,6 @@ ensure_staging_dir() {
 get_staging_dir() {
   ensure_staging_dir
   printf '%s' "$STAGING_DIR"
-}
-
-json_key() {
-  local key="$1"
-  node -e '
-    const fs = require("fs");
-    const cfg = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-    const value = cfg[process.argv[2]];
-    process.stdout.write(Array.isArray(value) ? JSON.stringify(value) : String(value));
-  ' "$SOURCE_CONFIG" "$key"
 }
 
 require_node_and_npm() {
@@ -284,18 +284,19 @@ copy_backend() {
   fi
 
   if ! ensure_dir "$BACKEND_DIR" "750"; then
-    add_pending "sudo tar -C $(shell_quote "$SOURCE_BACKEND_DIR") --exclude=./node_modules --exclude=./auction.env --exclude=./.env --exclude=./*.log -cf - . | sudo tar -C $(shell_quote "$BACKEND_DIR") -xf -"
+    add_pending "sudo tar -C $(shell_quote "$SOURCE_BACKEND_DIR") --exclude=./node_modules --exclude=./manebid.env --exclude=./auction.env --exclude=./.env --exclude=./*.log -cf - . | sudo tar -C $(shell_quote "$BACKEND_DIR") -xf -"
     return 1
   fi
 
   if ! can_write_target "$BACKEND_DIR"; then
-    add_pending "sudo tar -C $(shell_quote "$SOURCE_BACKEND_DIR") --exclude=./node_modules --exclude=./auction.env --exclude=./.env --exclude=./*.log -cf - . | sudo tar -C $(shell_quote "$BACKEND_DIR") -xf -"
+    add_pending "sudo tar -C $(shell_quote "$SOURCE_BACKEND_DIR") --exclude=./node_modules --exclude=./manebid.env --exclude=./auction.env --exclude=./.env --exclude=./*.log -cf - . | sudo tar -C $(shell_quote "$BACKEND_DIR") -xf -"
     return 1
   fi
 
   (
     cd "$SOURCE_BACKEND_DIR" &&
       tar --exclude='./node_modules' \
+          --exclude='./manebid.env' \
           --exclude='./auction.env' \
           --exclude='./.env' \
           --exclude='./*.log' \
@@ -316,7 +317,7 @@ write_env_file() {
 
   if ! ensure_dir "$ENV_DIR" "750"; then
     ensure_staging_dir
-    staged_env="$STAGING_DIR/auction.env"
+    staged_env="$STAGING_DIR/manebid.env"
     render_env_file "$staged_env"
     add_pending "sudo install -m 0640 $(shell_quote "$staged_env") $(shell_quote "$env_file")"
     return 1
@@ -324,7 +325,7 @@ write_env_file() {
 
   if ! can_write_target "$ENV_DIR"; then
     ensure_staging_dir
-    staged_env="$STAGING_DIR/auction.env"
+    staged_env="$STAGING_DIR/manebid.env"
     render_env_file "$staged_env"
     add_pending "sudo install -m 0640 $(shell_quote "$staged_env") $(shell_quote "$env_file")"
     return 1
@@ -407,6 +408,7 @@ rewriteJson('config.json', (cfg) => {
   cfg.LOG_DIR = logDir;
   cfg.LOG_NAME = logName;
   cfg.SERVICE_NAME = serviceName;
+  cfg.MESSAGING_PERSISTENCE_FILE = path.join(dbPath, 'operator-messages.json');
 });
 
 const resourceReplacements = new Map([
@@ -517,7 +519,7 @@ const content = `module.exports = {
       script: "backend.js",
       env: {
         NODE_ENV: "production",
-        AUCTION_ENV_FILE: ${JSON.stringify(envFile)}
+        MANEBID_ENV_FILE: ${JSON.stringify(envFile)}
       }
     }
   ]
@@ -711,10 +713,10 @@ attempt_first_run() {
   fi
 
   FIRST_RUN_ATTEMPTED=1
-  FIRST_RUN_LOG="$(mktemp "${TMPDIR:-/tmp}/auction-first-run.XXXXXX.log")"
+  FIRST_RUN_LOG="$(mktemp "${TMPDIR:-/tmp}/manebid-first-run.XXXXXX.log")"
   (
     cd "$BACKEND_DIR" &&
-      AUCTION_ENV_FILE="$ENV_FILE" NODE_ENV=production node backend.js >"$FIRST_RUN_LOG" 2>&1
+      MANEBID_ENV_FILE="$ENV_FILE" NODE_ENV=production node backend.js >"$FIRST_RUN_LOG" 2>&1
   ) &
   local pid="$!"
   local waited=0
@@ -776,7 +778,11 @@ const pathKeys = new Set([
   'PPTX_CONFIG_DIR',
   'OUTPUT_DIR',
   'DB_PATH',
-  'LOG_DIR'
+  'DB_NAME',
+  'LOG_DIR',
+  'LOG_NAME',
+  'SERVICE_NAME',
+  'MESSAGING_PERSISTENCE_FILE'
 ]);
 for (const [key, value] of Object.entries(cfg)) {
   if (pathKeys.has(key)) continue;
@@ -858,17 +864,6 @@ done
 
 require_node_and_npm
 
-DEFAULT_CONFIG_IMG_DIR="$(json_key CONFIG_IMG_DIR)"
-DEFAULT_BACKUP_DIR="$(json_key BACKUP_DIR)"
-DEFAULT_UPLOAD_DIR="$(json_key UPLOAD_DIR)"
-DEFAULT_PPTX_CONFIG_DIR="$(json_key PPTX_CONFIG_DIR)"
-DEFAULT_OUTPUT_DIR="$(json_key OUTPUT_DIR)"
-DEFAULT_DB_PATH="$(json_key DB_PATH)"
-DEFAULT_DB_NAME="$(json_key DB_NAME)"
-DEFAULT_LOG_DIR="$(json_key LOG_DIR)"
-DEFAULT_LOG_NAME="$(json_key LOG_NAME)"
-DEFAULT_SERVICE_NAME="$(json_key SERVICE_NAME)"
-
 if [ "$DRY_RUN" -eq 1 ]; then
   BACKEND_DIR="$DEFAULT_BACKEND_DIR"
   ENV_DIR="$DEFAULT_ENV_DIR"
@@ -905,7 +900,7 @@ else
   printf '\n'
 fi
 
-ENV_FILE="$ENV_DIR/auction.env"
+ENV_FILE="$ENV_DIR/manebid.env"
 DATA_WRITE_PATHS="$(join_unique_paths "$DB_PATH" "$CONFIG_IMG_DIR" "$BACKUP_DIR" "$UPLOAD_DIR" "$PPTX_CONFIG_DIR" "$OUTPUT_DIR" "$LOG_DIR")"
 
 detect_existing_install

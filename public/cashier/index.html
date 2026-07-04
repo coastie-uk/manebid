@@ -1,28 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-view-key="cashier" data-access-role="cashier" data-message-poll-ms="10000" data-message-auction-select="auction-select" data-asset-version="2026-07-02-poll-1">
 <head>
   <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <title>Manage Payments | ManeBid — Convention Auction Manager</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script>
-    window.__CASHIER_ASSET_VERSION__ = "2026-05-19-payments-ui-1";
-    (function bootstrapOperatorTheme() {
-      const getBrowserPreferredTheme = () => window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light";
-      try {
-        const session = JSON.parse(localStorage.getItem("operatorSession") || "null");
-        const savedMode = String(session?.user?.preferences?.theme?.mode || "").toLowerCase();
-        const mode = savedMode === "dark" || savedMode === "light"
-          ? savedMode
-          : getBrowserPreferredTheme();
-        document.documentElement.dataset.theme = mode;
-        document.documentElement.style.colorScheme = mode;
-      } catch (_error) {
-        const mode = getBrowserPreferredTheme();
-        document.documentElement.dataset.theme = mode;
-        document.documentElement.style.colorScheme = mode;
-      }
-    })();
-  </script>
+  <script src="/scripts/page-bootstrap.js"></script>
   <link rel="stylesheet" href="/styles/admin-styles.css?v=2026-05-19-payments-ui-1">
   <link rel="stylesheet" href="/styles/settlement.css?v=2026-05-19-payments-ui-1" />
   <link rel="icon" type="image/png" href="/images/favicon.png" />
@@ -282,22 +265,10 @@
   <script src="/scripts/hover-photo.js?v=2026-05-19-payments-ui-1"></script>
   <script src="/scripts/daypilot-modal-3.15.1.min.js?v=2026-05-19-payments-ui-1"></script>
   <script src="/scripts/banner.js?v=2026-05-19-payments-ui-1"></script>
-  <script src="/scripts/session-auth.js?v=2026-05-19-payments-ui-1"></script>
+  <script src="/scripts/session-auth.js?v=2026-07-02-csrf-1"></script>
   <script src="/scripts/theme.js?v=2026-05-19-payments-ui-1"></script>
-  <script>
-    window.__APP_PAGE_AUTH__ = {
-      viewKey: "cashier",
-      access: { role: "cashier" }
-    };
-  </script>
   <script src="/scripts/auth-bootstrap.js?v=2026-05-19-payments-ui-1"></script>
-  <script>
-    window.AppMessagingConfig = {
-      closedPollMs: 10000,
-      auctionSelectId: "auction-select"
-    };
-  </script>
   <script src="/scripts/messaging.js?v=2026-05-25-notify-all-1"></script>
-  <script src="/scripts/cashier-login.js?v=2026-05-19-payments-ui-1"></script>
+  <script src="/scripts/cashier-login.js?v=2026-07-02-csrf-1"></script>
 </body>
 </html>

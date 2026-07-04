@@ -20,10 +20,8 @@ const {
 
 const VALID_ROLES = new Set(ROLE_LIST);
 const VALID_PERMISSIONS = new Set(PERMISSION_LIST);
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+const SESSION_COOKIE_NAME = 'manebid_session';
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 function normalizeAcceptedValues(input, validSet, label) {
   const values = Array.isArray(input) ? [...input] : [input];
@@ -54,33 +52,98 @@ function attachDecodedUser(req, decoded) {
   return req.user;
 }
 
-function authenticateSession(req, res, next) {
-  const token = req.headers.authorization;
+function parseCookies(req) {
+  const cookies = {};
+  const raw = req.headers.cookie;
+  if (!raw || typeof raw !== 'string') return cookies;
+  raw.split(';').forEach((part) => {
+    const separator = part.indexOf('=');
+    if (separator <= 0) return;
+    const key = part.slice(0, separator).trim();
+    const value = part.slice(separator + 1).trim();
+    try {
+      cookies[key] = decodeURIComponent(value);
+    } catch (_error) {
+      cookies[key] = value;
+    }
+  });
+  return cookies;
+}
 
-  if (!token || typeof token !== 'string') {
-    logFromRequest(req, logLevels.ERROR, 'No JWT supplied in Authorization header');
-    sleep(1000).then(() => res.status(403).json({ error: 'Access denied' }));
-    return;
+function getSessionToken(req) {
+  return parseCookies(req)[SESSION_COOKIE_NAME] || null;
+}
+
+function resolveSession(req) {
+  const token = getSessionToken(req);
+  if (!token) {
+    const error = new Error('Access denied');
+    error.status = 403;
+    throw error;
   }
 
-  jwt.verify(token, SECRET_KEY, (err, decoded) => {
-    if (err) {
-      logFromRequest(req, logLevels.DEBUG, `Invalid token – ${err.name}…`);
-      return res.status(403).json({ error: 'Session expired' });
-    }
+  let decoded;
+  try {
+    decoded = jwt.verify(token, SECRET_KEY, { algorithms: ['HS256'] });
+  } catch (_error) {
+    const error = new Error('Session expired');
+    error.status = 403;
+    throw error;
+  }
 
-    const currentUser = getUserByUsername(decoded?.username || '');
-    if (!currentUser) {
-      return res.status(403).json({ error: 'Session expired' });
-    }
-    if (!isSessionTokenCurrent(currentUser, decoded)) {
-      logFromRequest(req, logLevels.INFO, `Session invalidated for ${currentUser.username}`);
-      return res.status(403).json({ error: 'Session invalidated', reason: 'remote_logout' });
-    }
+  const currentUser = getUserByUsername(decoded?.username || '');
+  if (!currentUser) {
+    const error = new Error('Session expired');
+    error.status = 403;
+    throw error;
+  }
+  if (!isSessionTokenCurrent(currentUser, decoded)) {
+    const error = new Error('Session invalidated');
+    error.status = 403;
+    error.reason = 'remote_logout';
+    throw error;
+  }
 
-    attachDecodedUser(req, decoded);
-    return next();
+  const currentAccess = shapeUserAccess(currentUser);
+  const scopedAccess = decoded?.session_scope === 'slideshow'
+    ? { roles: currentAccess.roles.includes('slideshow') ? ['slideshow'] : [], permissions: [], is_root: 0 }
+    : currentAccess;
+  const user = attachDecodedUser(req, {
+    username: currentUser.username,
+    session_invalid_before: currentUser.session_invalid_before,
+    session_scope: decoded?.session_scope || 'operator',
+    csrf_token: decoded?.csrf_token,
+    roles: scopedAccess.roles,
+    permissions: scopedAccess.permissions,
+    is_root: scopedAccess.is_root
   });
+  return { token, decoded, currentUser, user };
+}
+
+function hasValidCsrf(req, decoded) {
+  const supplied = req.get('X-CSRF-Token');
+  const expected = decoded?.csrf_token;
+  if (typeof supplied !== 'string' || typeof expected !== 'string') return false;
+  const suppliedBuffer = Buffer.from(supplied);
+  const expectedBuffer = Buffer.from(expected);
+  return suppliedBuffer.length === expectedBuffer.length
+    && require('crypto').timingSafeEqual(suppliedBuffer, expectedBuffer);
+}
+
+function authenticateSession(req, res, next) {
+  try {
+    const session = resolveSession(req);
+    if (!SAFE_METHODS.has(req.method) && !hasValidCsrf(req, session.decoded)) {
+      return res.status(403).json({ error: 'Invalid CSRF token' });
+    }
+    req.session = session;
+    return next();
+  } catch (error) {
+    if (error.reason === 'remote_logout') {
+      logFromRequest(req, logLevels.INFO, 'Session invalidated');
+    }
+    return res.status(error.status || 403).json({ error: error.message, ...(error.reason ? { reason: error.reason } : {}) });
+  }
 }
 
 function authenticateRole(acceptedRoles) {
@@ -153,6 +216,10 @@ module.exports = {
   authenticatePermission,
   authenticateAccess,
   attachDecodedUser,
+  resolveSession,
+  hasValidCsrf,
+  getSessionToken,
+  SESSION_COOKIE_NAME,
   VALID_ROLES,
   VALID_PERMISSIONS
 };

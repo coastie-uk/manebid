@@ -212,8 +212,8 @@ async function ensurePermissionManagerToken() {
     })
   });
   await expectStatus(loginManager.res, 200);
-  assert.ok(loginManager.json?.token, "Expected permission manager token");
-  return loginManager.json.token;
+  assert.ok(loginManager.res._session, "Expected permission manager session");
+  return loginManager.res._session;
 }
 
 async function listManagedBackups() {
@@ -1110,7 +1110,7 @@ addTest("M-021aa","maintenance user without manage_users is denied all user-mana
     })
   });
   await expectStatus(limitedLogin.res, 200);
-  const limitedToken = limitedLogin.json?.token;
+  const limitedToken = limitedLogin.res._session;
   assert.ok(limitedToken, "Expected limited maintenance token");
 
   const checks = [
@@ -1547,7 +1547,7 @@ addTest("M-021jb","maintenance/users/:username/logout-now success invalidates ac
     })
   });
   await expectStatus(activeLogin.res, 200);
-  assert.ok(activeLogin.json?.token, "Expected managed user token");
+  assert.ok(activeLogin.res._session, "Expected managed user session");
 
   const logoutNow = await fetchJson(`${baseUrl}/maintenance/users/${encodeURIComponent(context.managedUser.username)}/logout-now`, {
     method: "POST",
@@ -1557,8 +1557,7 @@ addTest("M-021jb","maintenance/users/:username/logout-now success invalidates ac
 
   const validateAfter = await fetchJson(`${baseUrl}/validate`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token: activeLogin.json.token })
+    headers: authHeaders(activeLogin.res._session)
   });
   await expectStatus(validateAfter.res, 403);
   assert.equal(validateAfter.json?.reason, "remote_logout");
@@ -1572,7 +1571,7 @@ addTest("M-021jb","maintenance/users/:username/logout-now success invalidates ac
     })
   });
   await expectStatus(relogin.res, 200);
-  assert.ok(relogin.json?.token, "Expected user to reauthenticate after logout-now");
+  assert.ok(relogin.res._session, "Expected user to reauthenticate after logout-now");
 });
 
 addTest("M-021k","maintenance/users/:username/password failure short password", async () => {
@@ -1612,7 +1611,7 @@ addTest("M-021m","maintenance/users/:username/password success", async () => {
     })
   });
   await expectStatus(loginAfter.res, 200);
-  assert.ok(loginAfter.json?.token, "Expected user to authenticate with updated password");
+  assert.ok(loginAfter.res._session, "Expected user to authenticate with updated password");
   context.managedUser.password = nextPassword;
 });
 
@@ -1663,11 +1662,11 @@ addTest("M-021o","maintenance/users/:username delete failure root from non-root 
     body: JSON.stringify({ username: guardUsername, role: "maintenance", password: guardPassword })
   });
   await expectStatus(guardLogin.res, 200);
-  assert.ok(guardLogin.json?.token, "Guard user login failed");
+  assert.ok(guardLogin.res._session, "Guard user login failed");
 
   const { res, json } = await fetchJson(`${baseUrl}/maintenance/users/root`, {
     method: "DELETE",
-    headers: authHeaders(guardLogin.json.token)
+    headers: authHeaders(guardLogin.res._session)
   });
   await expectStatus(res, 400);
   assert.equal(json?.error, "The root user cannot be deleted.");

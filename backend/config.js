@@ -16,7 +16,9 @@ dotenv.config(); // read .env if present
 // get SECRET KEY from .env
 // const SECRET_KEY = process.env.SECRET_KEY;
 
-const ENV_PATH = process.env.AUCTION_ENV_FILE || '/etc/auction/auction.env';
+const ENV_PATH = process.env.MANEBID_ENV_FILE
+  || process.env.AUCTION_ENV_FILE
+  || '/etc/manebid/manebid.env';
 
 // Only load the file if SECRET_KEY isn't already set by the runtime (e.g., systemd)
 if (!process.env.SECRET_KEY) {
@@ -147,8 +149,8 @@ function optStr(obj, key, defaultValue, minLen = 1, maxLen = Infinity) {
 let cfg;
 try {
 
-  const DB_PATH        = reqStr(json, 'DB_PATH');         // e.g., "/var/auction"
-  const DB_NAME        = reqStr(json, 'DB_NAME', 1, 100);         // e.g., "auction.db"
+  const DB_PATH        = reqStr(json, 'DB_PATH');         // e.g., "/var/lib/manebid"
+  const DB_NAME        = reqStr(json, 'DB_NAME', 1, 100);         // e.g., "manebid.db"
   const UPLOAD_DIR     = reqStr(json, 'UPLOAD_DIR');      // e.g., "uploads"
   const BACKUP_DIR     = reqStr(json, 'BACKUP_DIR');      // e.g., "backups"
   const CONFIG_IMG_DIR = reqStr(json, 'CONFIG_IMG_DIR');  // e.g., "resources"
@@ -159,6 +161,10 @@ try {
   const allowedExtensions = json.allowedExtensions;
   const LOG_LEVEL      = reqStr(json, 'LOG_LEVEL', 3, 10);         // e.g., "INFO"
   const PORT           = reqNum(json, 'PORT', 1, 65535);               // e.g., 3000
+  const HOST           = optStr(json, 'HOST', '127.0.0.1', 1, 255);
+  const TRUSTED_PROXIES = Array.isArray(json.TRUSTED_PROXIES)
+    ? json.TRUSTED_PROXIES.filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim())
+    : ['loopback'];
   const PPTX_CONFIG_DIR = reqStr(json, 'PPTX_CONFIG_DIR'); // e.g., "pptx-config"
   const LOG_DIR      = reqStr(json, 'LOG_DIR');         // e.g., "logs"
   const LOG_NAME      = reqStr(json, 'LOG_NAME');         // e.g., "server.log"
@@ -167,7 +173,9 @@ try {
   const PASSWORD_MIN_LENGTH = reqNum(json, 'PASSWORD_MIN_LENGTH', 5, 100); // e.g., 5
   const RATE_LIMIT_WINDOW = reqNum(json, 'RATE_LIMIT_WINDOW', 1, 86400); // in seconds
   const RATE_LIMIT_MAX = reqNum(json, 'RATE_LIMIT_MAX', 1, 1000);
+  const ITEM_PHOTO_MAX_BYTES = optNum(json, 'ITEM_PHOTO_MAX_BYTES', 10 * 1024 * 1024, 1024, 50 * 1024 * 1024);
   const LOGIN_LOCKOUT_AFTER = reqNum(json, 'LOGIN_LOCKOUT_AFTER', 1, 1000);
+  const LOGIN_IP_LOCKOUT_AFTER = optNum(json, 'LOGIN_IP_LOCKOUT_AFTER', 40, 1, 10000);
   const LOGIN_LOCKOUT = reqNum(json, 'LOGIN_LOCKOUT', 1, 86400); // in seconds
   const SERVICE_NAME = reqStr(json, 'SERVICE_NAME', 1, 100); // e.g., "Auction_Backend"
   const MESSAGING_ENABLED = optBool(json, 'MESSAGING_ENABLED', true);
@@ -190,6 +198,8 @@ try {
 
     // runtime & non-secrets (from JSON)
     PORT,
+    HOST,
+    TRUSTED_PROXIES,
     LOG_LEVEL,
     DB_PATH,
     DB_NAME,
@@ -209,7 +219,9 @@ try {
     PASSWORD_MIN_LENGTH,
     RATE_LIMIT_WINDOW,
     RATE_LIMIT_MAX,
+    ITEM_PHOTO_MAX_BYTES,
     LOGIN_LOCKOUT_AFTER,
+    LOGIN_IP_LOCKOUT_AFTER,
     LOGIN_LOCKOUT,
     SERVICE_NAME,
     MESSAGING_ENABLED,

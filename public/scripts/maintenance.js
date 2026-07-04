@@ -243,7 +243,7 @@ const BACKUP_ACTION_ICONS = Object.freeze({
 });
 
 function getAuthToken() {
-  return window.AppAuth?.getToken?.() || localStorage.getItem("maintenanceToken") || "";
+  return window.AppAuth?.getToken?.() || "";
 }
 
 let token = getAuthToken();
@@ -427,7 +427,7 @@ function postFormDataWithUploadProgress(url, formData, onProgress) {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", url);
     xhr.responseType = "json";
-    xhr.setRequestHeader("Authorization", token);
+    xhr.setRequestHeader("X-CSRF-Token", token);
 
     xhr.upload.addEventListener("progress", (event) => {
       if (typeof onProgress === "function") {
@@ -809,8 +809,8 @@ function renderBackupTable() {
 async function loadManagedBackups({ preserveSelection = true } = {}) {
   if (!backupTableBody || !token) return;
 
-  const res = await fetch(`${API}/maintenance/backups`, {
-    headers: { Authorization: token }
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/backups`, {
+    headers: { "X-CSRF-Token": token }
   });
   const data = await res.json();
 
@@ -863,8 +863,8 @@ function renderMessagingStats(data = {}) {
 async function loadMessagingStats({ announce = false } = {}) {
   if (!token || !messagingEnabledStatus) return;
 
-  const res = await fetch(`${API}/maintenance/messages`, {
-    headers: { Authorization: token }
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/messages`, {
+    headers: { "X-CSRF-Token": token }
   });
   const data = await res.json().catch(() => ({}));
 
@@ -881,10 +881,10 @@ async function clearMessagingCache() {
   const confirmed = await confirmMaintenanceAction("Clear all stored operator messages from backend memory?");
   if (!confirmed) return;
 
-  const res = await fetch(`${API}/maintenance/messages/clear`, {
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/messages/clear`, {
     method: "POST",
     headers: {
-      Authorization: token,
+      "X-CSRF-Token": token,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({})
@@ -902,8 +902,8 @@ async function clearMessagingCache() {
 }
 
 async function exportMessagingCache() {
-  const res = await fetch(`${API}/maintenance/messages/export.csv`, {
-    headers: { Authorization: token }
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/messages/export.csv`, {
+    headers: { "X-CSRF-Token": token }
   });
 
   if (!res.ok) {
@@ -931,8 +931,8 @@ async function selectManagedBackup(backupId, { silent = false } = {}) {
 
   selectedBackupId = backupId;
 
-  const res = await fetch(`${API}/maintenance/backups/${encodeURIComponent(backupId)}`, {
-    headers: { Authorization: token }
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/backups/${encodeURIComponent(backupId)}`, {
+    headers: { "X-CSRF-Token": token }
   });
   const data = await res.json();
 
@@ -1221,10 +1221,10 @@ function getQrRequestPayload() {
 }
 
 async function requestQrPngBlob() {
-  const res = await fetch(`${API}/maintenance/auctions/qr-code`, {
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/auctions/qr-code`, {
     method: "POST",
     headers: {
-      Authorization: token,
+      "X-CSRF-Token": token,
       "Content-Type": "application/json"
     },
     body: JSON.stringify(getQrRequestPayload())
@@ -1298,10 +1298,10 @@ async function downloadAuctionQrCode() {
 
 async function updateAuctionStatus(auctionId, status) {
   const normalizedStatus = normalizeAuctionStatus(status);
-  const res = await fetch(`${API}/auctions/update-status`, {
+  const res = await window.AppAuth.authenticatedFetch(`${API}/auctions/update-status`, {
     method: "POST",
     headers: {
-      Authorization: token,
+      "X-CSRF-Token": token,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ auction_id: auctionId, status: normalizedStatus })
@@ -1325,10 +1325,10 @@ async function updateAuctionStatus(auctionId, status) {
 }
 
 async function deleteAuctionById(auctionId, auctionFullName = "") {
-  const res1 = await fetch(`${API}/maintenance/auctions/list`, {
+  const res1 = await window.AppAuth.authenticatedFetch(`${API}/maintenance/auctions/list`, {
     method: "POST",
     headers: {
-      Authorization: token,
+      "X-CSRF-Token": token,
       "Content-Type": "application/json"
     }
   });
@@ -1348,10 +1348,10 @@ async function deleteAuctionById(auctionId, auctionFullName = "") {
 
   if (confirmed.canceled) return false;
 
-  const res = await fetch(`${API}/maintenance/auctions/delete`, {
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/auctions/delete`, {
     method: "POST",
     headers: {
-      Authorization: token,
+      "X-CSRF-Token": token,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ auction_id: auctionId })
@@ -1373,10 +1373,10 @@ async function resetAuctionById(auctionId, auctionFullName = "") {
   const password = await promptPassword(`Enter your current password to reset auction`, confirmMsg);
   if (!password) return false;
 
-  const res = await fetch(`${API}/maintenance/reset`, {
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/reset`, {
     method: "POST",
     headers: {
-      Authorization: token,
+      "X-CSRF-Token": token,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ auction_id: auctionId, password })
@@ -1424,10 +1424,10 @@ async function purgeDeletedItemsByAuctionId(auctionId, deletedCountOverride = nu
   const password = await promptPassword(`Enter your password to purge deleted items`, confirmMsg);
   if (!password) return false;
 
-  const res = await fetch(`${API}/maintenance/auctions/purge-deleted-items`, {
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/auctions/purge-deleted-items`, {
     method: "POST",
     headers: {
-      Authorization: token,
+      "X-CSRF-Token": token,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ auction_id: auctionId, password })
@@ -1445,10 +1445,10 @@ async function purgeDeletedItemsByAuctionId(auctionId, deletedCountOverride = nu
 }
 
 async function updateAuctionAdminStatePermission(auctionId, enabled) {
-  const res = await fetch(`${API}/maintenance/auctions/set-admin-state-permission`, {
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/auctions/set-admin-state-permission`, {
     method: "POST",
     headers: {
-      Authorization: token,
+      "X-CSRF-Token": token,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ auction_id: auctionId, admin_can_change_state: enabled })
@@ -2069,9 +2069,9 @@ function promptPasswordChange() {
 
 // Check if maint is already authenticated
 async function checkToken() {
-  token = getAuthToken();
   const session = window.__APP_AUTH_READY__ ? await window.__APP_AUTH_READY__ : await window.AppAuth?.refreshSession?.();
   if (session?.user) {
+    token = session.csrf_token || getAuthToken();
     currentUsername = session.user.username || null;
     currentMaintenanceUser = session.user;
     setMaintenanceUserMenu(currentUsername);
@@ -2108,10 +2108,10 @@ document.getElementById("backup-db").onclick = async () => {
     setBackupOperationStatus("Creating managed backup on the server...", "info");
     setCreateBackupLog("[pending] Creating managed backup...");
 
-    const res = await fetch(`${API}/maintenance/backup`, {
+    const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/backup`, {
       method: "POST",
       headers: {
-        Authorization: token,
+        "X-CSRF-Token": token,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ note: backupNoteInput?.value || "" })
@@ -2243,10 +2243,10 @@ confirmImportBackupButton?.addEventListener("click", async () => {
     updateBackupActionState();
     setImportBackupStatus("Importing backup into the server backup store...", "info");
 
-    const res = await fetch(`${API}/maintenance/backups/import/confirm`, {
+    const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/backups/import/confirm`, {
       method: "POST",
       headers: {
-        Authorization: token,
+        "X-CSRF-Token": token,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ import_token: pendingBackupImport.import_token })
@@ -2290,8 +2290,8 @@ async function downloadManagedBackupById(backupId) {
   setBackupOperationStatus(`Downloading ${selectedBackupDetail.filename}...`, "info");
 
   try {
-    const res = await fetch(`${API}/maintenance/backups/${encodeURIComponent(selectedBackupDetail.backup_id)}/download`, {
-      headers: { Authorization: token }
+    const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/backups/${encodeURIComponent(selectedBackupDetail.backup_id)}/download`, {
+      headers: { "X-CSRF-Token": token }
     });
 
     if (!res.ok) {
@@ -2351,9 +2351,9 @@ async function deleteManagedBackupById(backupId) {
   setBackupOperationStatus(`Deleting ${backupLabel}...`, "info");
 
   try {
-    const res = await fetch(`${API}/maintenance/backups/${encodeURIComponent(selectedBackupDetail.backup_id)}`, {
+    const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/backups/${encodeURIComponent(selectedBackupDetail.backup_id)}`, {
       method: "DELETE",
-      headers: { Authorization: token }
+      headers: { "X-CSRF-Token": token }
     });
     const data = await res.json();
     if (!res.ok) {
@@ -2413,10 +2413,10 @@ restoreSelectedBackupButton?.addEventListener("click", async () => {
   setBackupOperationStatus(`Restoring ${components.join(", ")} from ${backupLabel}...`, "info");
 
   try {
-    const res = await fetch(`${API}/maintenance/backups/${encodeURIComponent(selectedBackupDetail.backup_id)}/restore`, {
+    const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/backups/${encodeURIComponent(selectedBackupDetail.backup_id)}/restore`, {
       method: "POST",
       headers: {
-        Authorization: token,
+        "X-CSRF-Token": token,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ restoreDb, restorePhotos, restoreResources })
@@ -2466,8 +2466,8 @@ saveRestoreLogButton?.addEventListener("click", () => {
 });
 
 document.getElementById("export-csv").onclick = async () => {
-  const res = await fetch(`${API}/maintenance/export`, {
-    headers: { Authorization: token }
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/export`, {
+    headers: { "X-CSRF-Token": token }
   });
   const blob = await res.blob();
   const url = window.URL.createObjectURL(blob);
@@ -2486,9 +2486,9 @@ document.getElementById("export-csv").onclick = async () => {
 //   if (!fileInput.files.length) return showMessage("Select a file", "info");
 //   const formData = new FormData();
 //   formData.append("csv", fileInput.files[0]);
-//   const res = await fetch(`${API}/maintenance/import`, {
+//   const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/import`, {
 //     method: "POST",
-//     headers: { Authorization: token },
+//     headers: { "X-CSRF-Token": token },
 //     body: formData
 //   });
 //   const data = await res.json();
@@ -2571,7 +2571,7 @@ function renderStorageReport(data) {
 }
 
 document.getElementById("photo-report").onclick = async () => {
-  const res = await fetch(`${API}/maintenance/photo-report`, { headers: { Authorization: token } });
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/photo-report`, { headers: { "X-CSRF-Token": token } });
   const data = await res.json();
   if (!res.ok) {
     return showMessage(data.error || "Could not get storage report.", "error");
@@ -2580,13 +2580,23 @@ document.getElementById("photo-report").onclick = async () => {
  // showMessage(`Stored images: ${formatInteger(data.count)}, Total image size: ${formatBytes(data.totalSize)}`, "success");
 };
 
-function formatLogs(rawText) {
-  return rawText
-    .replace(/\[DEBUG\]/g, '<span style="color:gray; font-weight:bold;">[DEBUG]</span>')
-    .replace(/\[INFO\]/g, '<span style="color:green; font-weight:bold;">[INFO]</span>')
-    .replace(/\[WARN\]/g, '<span style="color:orange; font-weight:bold;">[WARN]</span>')
-    .replace(/\[ERROR\]/g, '<span style="color:red; font-weight:bold;">[ERROR]</span>')
-    .replace(/\n/g, '<br>');  // Properly convert newlines to <br> tags
+function renderLogs(target, rawText) {
+  target.replaceChildren();
+  const levelPattern = /(\[(?:DEBUG|INFO|WARN|ERROR)\])/g;
+  String(rawText || "").split("\n").forEach((line, lineIndex, lines) => {
+    line.split(levelPattern).forEach((part) => {
+      const level = /^\[(DEBUG|INFO|WARN|ERROR)\]$/.exec(part)?.[1];
+      if (!level) {
+        target.appendChild(document.createTextNode(part));
+        return;
+      }
+      const span = document.createElement("span");
+      span.className = `log-level log-level-${level.toLowerCase()}`;
+      span.textContent = part;
+      target.appendChild(span);
+    });
+    if (lineIndex < lines.length - 1) target.appendChild(document.createElement("br"));
+  });
 }
 
 const USER_ROLE_ORDER = ["admin", "cashier", "maintenance", "slideshow"];
@@ -2733,10 +2743,10 @@ document.getElementById("change-own-password").onclick = async () => {
     return showMessage("Passwords do not match.", "error");
   }
 
-  const res = await fetch(`${API}/change-password`, {
+  const res = await window.AppAuth.authenticatedFetch(`${API}/change-password`, {
     method: "POST",
     headers: {
-      Authorization: getAuthToken(),
+      "X-CSRF-Token": getAuthToken(),
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ currentPassword, newPassword })
@@ -2745,6 +2755,8 @@ document.getElementById("change-own-password").onclick = async () => {
   const data = await res.json();
   if (res.ok) {
     showMessage(data.message || "Password updated.", "success");
+    window.AppAuth?.clearAllSessions?.({ broadcast: true });
+    window.setTimeout(() => window.location.replace("/login.html?reason=signed_out"), 800);
   } else {
     showMessage(data.error || "Failed to change password.", "error");
   }
@@ -2769,10 +2781,10 @@ document.getElementById("add-user-button").onclick = async () => {
     return showMessage("Select at least one access option.", "error");
   }
 
-  const res = await fetch(`${API}/maintenance/users`, {
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/users`, {
     method: "POST",
     headers: {
-      Authorization: getAuthToken(),
+      "X-CSRF-Token": getAuthToken(),
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ username, password, roles, permissions })
@@ -2871,10 +2883,10 @@ saveEditUserAccessButton?.addEventListener("click", async () => {
     return;
   }
 
-  const updateRes = await fetch(`${API}/maintenance/users/${encodeURIComponent(selectedEditUser.username)}/access`, {
+  const updateRes = await window.AppAuth.authenticatedFetch(`${API}/maintenance/users/${encodeURIComponent(selectedEditUser.username)}/access`, {
     method: "PATCH",
     headers: {
-      Authorization: getAuthToken(),
+      "X-CSRF-Token": getAuthToken(),
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ roles, permissions })
@@ -2902,10 +2914,10 @@ changeEditUserPasswordButton?.addEventListener("click", async () => {
     return;
   }
 
-  const pwRes = await fetch(`${API}/maintenance/users/${encodeURIComponent(selectedEditUser.username)}/password`, {
+  const pwRes = await window.AppAuth.authenticatedFetch(`${API}/maintenance/users/${encodeURIComponent(selectedEditUser.username)}/password`, {
     method: "POST",
     headers: {
-      Authorization: getAuthToken(),
+      "X-CSRF-Token": getAuthToken(),
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ newPassword })
@@ -2929,8 +2941,8 @@ async function loadUsers() {
   const authToken = getAuthToken();
   if (!authToken) return;
 
-  const res = await fetch(`${API}/maintenance/users`, {
-    headers: { Authorization: authToken }
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/users`, {
+    headers: { "X-CSRF-Token": authToken }
   });
   const data = await res.json();
 
@@ -2999,9 +3011,9 @@ async function loadUsers() {
         }
       );
       if (!confirmed) return;
-      const logoutRes = await fetch(`${API}/maintenance/users/${encodeURIComponent(user.username)}/logout-now`, {
+      const logoutRes = await window.AppAuth.authenticatedFetch(`${API}/maintenance/users/${encodeURIComponent(user.username)}/logout-now`, {
         method: "POST",
-        headers: { Authorization: getAuthToken() }
+        headers: { "X-CSRF-Token": getAuthToken() }
       });
       const logoutData = await logoutRes.json();
       if (logoutRes.ok) {
@@ -3034,9 +3046,9 @@ async function loadUsers() {
           }
         );
         if (!confirmed) return;
-        const delRes = await fetch(`${API}/maintenance/users/${encodeURIComponent(user.username)}`, {
+        const delRes = await window.AppAuth.authenticatedFetch(`${API}/maintenance/users/${encodeURIComponent(user.username)}`, {
           method: "DELETE",
-          headers: { Authorization: getAuthToken() }
+          headers: { "X-CSRF-Token": getAuthToken() }
         });
         const delData = await delRes.json();
         if (delRes.ok) {
@@ -3087,7 +3099,7 @@ syncAccessEditorState(editUserModal || document);
 
 window.addEventListener(window.AppAuth?.SESSION_EVENT || "appauth:session", (event) => {
   const session = event.detail || null;
-  token = session?.token || getAuthToken();
+  token = session?.csrf_token || getAuthToken();
   currentMaintenanceUser = session?.user || null;
   currentUsername = session?.user?.username || currentUsername;
   setMaintenanceUserMenu(currentUsername);
@@ -3120,9 +3132,9 @@ document.getElementById("restart-server").onclick = async () => {
     height: 60
   });
   if (confirmed) {
-    await fetch(`${API}/maintenance/restart`, {
+    await window.AppAuth.authenticatedFetch(`${API}/maintenance/restart`, {
       method: "POST",
-      headers: { Authorization: token }
+      headers: { "X-CSRF-Token": token }
     });
     showMessage("Restart command sent.");
   }
@@ -3148,7 +3160,7 @@ function syncLogPopup() {
   const popupLogBox = logPopupWindow.document.getElementById("popup-server-logs");
   if (!popupLogBox) return;
 
-  popupLogBox.innerHTML = latestServerLog ? formatLogs(latestServerLog) : '<span class="maintenance-log-empty">No log output loaded yet.</span>';
+  renderLogs(popupLogBox, latestServerLog || "No log output loaded yet.");
   popupLogBox.scrollTop = popupLogBox.scrollHeight;
   syncLogPopupControls();
 }
@@ -3159,153 +3171,23 @@ function openLogPopup() {
     syncLogPopup();
     return;
   }
-
-  logPopupWindow = window.open("", "maintenanceServerLogs", "popup,width=960,height=680,resizable=yes,scrollbars=yes");
-
+  logPopupWindow = window.open("/maint/log-viewer.html", "maintenanceServerLogs", "popup,width=960,height=680,resizable=yes,scrollbars=yes");
   if (!logPopupWindow) {
     showMessage("Browser blocked the log viewer pop-out window.", "error");
-    return;
+  } else {
+    logPopupWindow.addEventListener("load", syncLogPopup, { once: true });
   }
-
-  const popupDoc = logPopupWindow.document;
-  popupDoc.open();
-  popupDoc.write(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Server Logs | ManeBid — Convention Auction Manager</title>
-  <style>
-    body {
-      margin: 0;
-      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
-      background: #f5f7fb;
-      color: #1b2430;
-    }
-    .popup-shell {
-      display: grid;
-      gap: 12px;
-      padding: 12px;
-    }
-    .popup-card {
-      background: rgba(255, 255, 255, 0.96);
-      border: 1px solid #d8dee6;
-      border-radius: 14px;
-      box-shadow: 0 8px 24px rgba(10, 30, 60, 0.08);
-      overflow: hidden;
-    }
-    .popup-head {
-      align-items: flex-start;
-      background: #fbfcfe;
-      border-bottom: 1px solid #d8dee6;
-      display: flex;
-      gap: 12px;
-      justify-content: space-between;
-      padding: 12px 14px;
-    }
-    .popup-head h1 {
-      margin: 0;
-      font-size: 1.05rem;
-    }
-    .popup-subtle {
-      color: #5f6b7a;
-      margin-top: 4px;
-    }
-    .popup-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
-      justify-content: flex-end;
-    }
-    .popup-actions button {
-      background: #0f62fe;
-      border: 1px solid #0f62fe;
-      border-radius: 10px;
-      color: #fff;
-      cursor: pointer;
-      font: inherit;
-      font-weight: 700;
-      min-height: 38px;
-      padding: 0 12px;
-    }
-    .popup-actions label {
-      align-items: center;
-      color: #1b2430;
-      display: inline-flex;
-      gap: 8px;
-      font-weight: 600;
-    }
-    .popup-actions input {
-      margin: 0;
-    }
-    #popup-server-logs {
-      background: #0f1720;
-      border: 1px solid #1e293b;
-      border-radius: 12px;
-      box-sizing: border-box;
-      color: #dbe7f5;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      height: calc(100vh - 124px);
-      margin: 12px;
-      overflow: auto;
-      padding: 12px;
-      white-space: pre-wrap;
-    }
-    .maintenance-log-empty {
-      color: #8ea0b8;
-      font-style: italic;
-    }
-  </style>
-</head>
-<body>
-  <div class="popup-shell">
-    <section class="popup-card">
-      <div class="popup-head">
-        <div>
-          <h1>Server Logs</h1>
-          <div class="popup-subtle">Monitoring window linked to the Manage Auctions panel.</div>
-        </div>
-        <div class="popup-actions">
-          <label><input id="popup-auto-refresh" type="checkbox"> Auto-refresh</label>
-          <button id="popup-refresh-logs" type="button">Refresh</button>
-          <button id="popup-close-window" type="button">Close</button>
-        </div>
-      </div>
-      <div id="popup-server-logs"><span class="maintenance-log-empty">Loading logs...</span></div>
-    </section>
-  </div>
-</body>
-</html>`);
-  popupDoc.close();
-
-  popupDoc.getElementById("popup-refresh-logs")?.addEventListener("click", () => {
-    loadLogs();
-  });
-
-  popupDoc.getElementById("popup-close-window")?.addEventListener("click", () => {
-    logPopupWindow?.close();
-  });
-
-  popupDoc.getElementById("popup-auto-refresh")?.addEventListener("change", (event) => {
-    if (!autoRefreshLogsCheckbox) return;
-    autoRefreshLogsCheckbox.checked = event.target.checked;
-    autoRefreshLogsCheckbox.dispatchEvent(new Event("change", { bubbles: true }));
-  });
-
-  syncLogPopup();
-  logPopupWindow.focus();
 }
 
 async function loadLogs() {
-  const res = await fetch(`${API}/maintenance/logs`, {
-    headers: { Authorization: token }
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/logs`, {
+    headers: { "X-CSRF-Token": token }
   });
   const data = await res.json();
   if (res.ok) {
     const logBox = document.getElementById("server-logs");
     latestServerLog = data.log || "";
-    logBox.innerHTML = latestServerLog ? formatLogs(latestServerLog) : '<span class="maintenance-log-empty">No log output loaded yet.</span>';
+    renderLogs(logBox, latestServerLog || "No log output loaded yet.");
     logBox.scrollTop = logBox.scrollHeight;
     syncLogPopup();
   } else {
@@ -3341,8 +3223,8 @@ popoutLogsButton?.addEventListener("click", () => {
 
 document.getElementById("cleanup-orphans").onclick = async () => {
   // Step 1: Preview unused photos
-  const preview = await fetch(`${API}/maintenance/orphan-photos`, {
-    headers: { Authorization: token }
+  const preview = await window.AppAuth.authenticatedFetch(`${API}/maintenance/orphan-photos`, {
+    headers: { "X-CSRF-Token": token }
   });
   const data = await preview.json();
 
@@ -3360,9 +3242,9 @@ document.getElementById("cleanup-orphans").onclick = async () => {
         } else { 
 
   // Step 2: Proceed with cleanup
-  const cleanup = await fetch(`${API}/maintenance/cleanup-orphan-photos`, {
+  const cleanup = await window.AppAuth.authenticatedFetch(`${API}/maintenance/cleanup-orphan-photos`, {
     method: "POST",
-    headers: { Authorization: token }
+    headers: { "X-CSRF-Token": token }
   });
   const result = await cleanup.json();
 
@@ -3399,10 +3281,10 @@ document.getElementById("generate-test-data").onclick = async () => {
     if (!confirmed) return;
 
     showMessage("Generating test data...");
-    const res = await fetch(`${API}/maintenance/generate-test-data`, {
+    const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/generate-test-data`, {
       method: "POST",
       headers: {
-        Authorization: token,
+        "X-CSRF-Token": token,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ count, auction_id: Number(auction.id) })
@@ -3449,10 +3331,10 @@ document.getElementById("generate-bids-btn").onclick = async () => {
     if (!confirmed) return;
 
     showMessage("Generating test bids...");
-    const res = await fetch(`${API}/maintenance/generate-bids`, {
+    const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/generate-bids`, {
       method: "POST",
       headers: {
-        Authorization: token,
+        "X-CSRF-Token": token,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ auction_id: Number(auction.id), num_bids: numBids, num_bidders: numBidders })
@@ -3489,10 +3371,10 @@ document.getElementById("delete-test-bids").onclick = async () => {
     });
     if (!confirmed) return;
 
-    const res = await fetch(`${API}/maintenance/delete-test-bids`, {
+    const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/delete-test-bids`, {
       method: "POST",
       headers: {
-        Authorization: token,
+        "X-CSRF-Token": token,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ auction_id: Number(auction.id) })
@@ -3513,7 +3395,7 @@ document.getElementById("delete-test-bids").onclick = async () => {
 
 
 
-function logOut() {
+async function logOut() {
   if (logInterval) {
     clearInterval(logInterval);
     logInterval = null;
@@ -3521,7 +3403,7 @@ function logOut() {
   if (logPopupWindow && !logPopupWindow.closed) {
     logPopupWindow.close();
   }
-  window.AppAuth?.clearAllSessions?.({ broadcast: true });
+  await window.AppAuth?.logout?.();
   token = "";
   currentUsername = null;
   showMessage("Logged out", "info");
@@ -3545,11 +3427,11 @@ document.getElementById('save-config').addEventListener('click', async () => {
     return;
   }
 
-  const response = await fetch(`${API}/maintenance/save-pptx-config/${configName}`, {
+  const response = await window.AppAuth.authenticatedFetch(`${API}/maintenance/save-pptx-config/${configName}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': token
+      'X-CSRF-Token': token
     },
     body: JSON.stringify(json)
   });
@@ -3568,8 +3450,8 @@ document.getElementById('save-config').addEventListener('click', async () => {
 // Function to show editor and load current config
 function showConfigEditor() {
   const configName = document.getElementById('config-select').value;
-  fetch(`${API}/maintenance/get-pptx-config/${configName}`, {
-    headers: { 'Authorization': token }
+  window.AppAuth.authenticatedFetch(`${API}/maintenance/get-pptx-config/${configName}`, {
+    headers: { 'X-CSRF-Token': token }
   })
     .then(res => res.text())
     .then(text => {
@@ -3582,9 +3464,9 @@ function showConfigEditor() {
 async function refreshAuctions() {
   const baseUrl = window.location.origin;
 
-  const res = await fetch(`${API}/maintenance/auctions/list`, {
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/auctions/list`, {
     method: "POST",
-    headers: { Authorization: token }
+    headers: { "X-CSRF-Token": token }
   });
 
   if (res.status === 403) {
@@ -3677,10 +3559,10 @@ document.getElementById("create-auction").onclick = async () => {
     return showMessage("Please provide both short and full names", "error");
   }
 
-  const res = await fetch(`${API}/maintenance/auctions/create`, {
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/auctions/create`, {
     method: "POST",
     headers: {
-      Authorization: token,
+      "X-CSRF-Token": token,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ short_name: short, full_name: full, logo: selectedLogo })
@@ -3720,10 +3602,10 @@ saveEditAuctionButton?.addEventListener("click", async () => {
   if (editAuctionPurgeDeletedButton) editAuctionPurgeDeletedButton.disabled = true;
 
   try {
-    const updateRes = await fetch(`${API}/maintenance/auctions/update`, {
+    const updateRes = await window.AppAuth.authenticatedFetch(`${API}/maintenance/auctions/update`, {
       method: "POST",
       headers: {
-        Authorization: token,
+        "X-CSRF-Token": token,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -3957,8 +3839,8 @@ function renderIntegrityVerbose(result, fixResult = null) {
 }
 
 async function fetchIntegrityResult(mode = "verbose") {
-  const res = await fetch(`${API}/maintenance/check-integrity?mode=${encodeURIComponent(mode)}`, {
-    headers: { Authorization: token }
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/check-integrity?mode=${encodeURIComponent(mode)}`, {
+    headers: { "X-CSRF-Token": token }
   });
   const data = await res.json();
   if (!res.ok) {
@@ -3999,9 +3881,9 @@ async function fixIntegrity() {
   integrityFixButton.disabled = true;
   integrityCheckButton.disabled = true;
   try {
-    const res = await fetch(`${API}/maintenance/check-integrity/fix`, {
+    const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/check-integrity/fix`, {
       method: "POST",
-      headers: { Authorization: token }
+      headers: { "X-CSRF-Token": token }
     });
     const data = await res.json();
     if (!res.ok) {
@@ -4030,10 +3912,10 @@ async function fixIntegrity() {
 //   const confirmed = await confirmMaintenanceAction(`Delete ${ids.length} invalid item(s)?`);
 //   if (!confirmed) return;
 
-//   const res = await fetch(`${API}/maintenance/check-integrity/delete`, {
+//   const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/check-integrity/delete`, {
 //     method: "POST",
 //     headers: {
-//       Authorization: token,
+//       "X-CSRF-Token": token,
 //       "Content-Type": "application/json"
 //     },
 //     body: JSON.stringify({ ids })
@@ -4065,9 +3947,9 @@ imgForm.addEventListener("submit", async (e) => {
     formData.append("images", file);
   }
 
-  const res = await fetch(`${API}/maintenance/resources/upload`, {
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/resources/upload`, {
     method: "POST",
-    headers: { Authorization: token },
+    headers: { "X-CSRF-Token": token },
     body: formData
   });
 
@@ -4101,8 +3983,8 @@ imgForm.addEventListener("submit", async (e) => {
 
 // Load file list
 async function loadPptxImageList() {
-  const res = await fetch(`${API}/maintenance/resources`, {
-    headers: { Authorization: token }
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/resources`, {
+    headers: { "X-CSRF-Token": token }
   });
 
   const data = await res.json();
@@ -4146,10 +4028,10 @@ async function loadPptxImageList() {
       );
       if (!confirmed) return;
 
-      const res = await fetch(`${API}/maintenance/resources/delete`, {
+      const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/resources/delete`, {
         method: "POST",
         headers: {
-          Authorization: token,
+          "X-CSRF-Token": token,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({ filename: file.name })
@@ -4208,8 +4090,8 @@ async function loadPptxImageList() {
 }
 
 async function loadLogoOptions() {
-  const res = await fetch(`${API}/maintenance/pptx-resources`, {
-    headers: { Authorization: token }
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/pptx-resources`, {
+    headers: { "X-CSRF-Token": token }
   });
 
   const data = await res.json();
@@ -4265,10 +4147,10 @@ document.getElementById("reset-pptx-config").onclick = async () => {
   );
   if (!confirmed) return;
 
-  const res = await fetch(`${API}/maintenance/pptx-config/reset`, {
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/pptx-config/reset`, {
     method: "POST",
     headers: {
-      Authorization: token,
+      "X-CSRF-Token": token,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ configType })
@@ -4292,16 +4174,21 @@ document.getElementById("fetch-audit-log").onclick = async () => {
   const typeQuery = selectedType ? (idQuery ? `&object_type=${selectedType}` : `?object_type=${selectedType}`) : "";
   const finalQuery = idQuery + typeQuery;
 
-  const res = await fetch(`${API}/audit-log${finalQuery}`, {
-    headers: { Authorization: token }
+  const res = await window.AppAuth.authenticatedFetch(`${API}/audit-log${finalQuery}`, {
+    headers: { "X-CSRF-Token": token }
   });
 
   const body = document.getElementById("audit-log-body");
-  body.innerHTML = "";
+  body.replaceChildren();
 
   if (!res.ok) {
     const row = document.createElement("tr");
-    row.innerHTML = `<td colspan="8" style="padding: 4px; color: red;">Failed to load audit log.</td>`;
+    const cell = document.createElement("td");
+    cell.colSpan = 8;
+    cell.style.padding = "4px";
+    cell.style.color = "red";
+    cell.textContent = "Failed to load audit log.";
+    row.appendChild(cell);
     body.appendChild(row);
     return;
   }
@@ -4309,18 +4196,21 @@ document.getElementById("fetch-audit-log").onclick = async () => {
   const data = await res.json();
   data.logs.forEach(log => {
     const row = document.createElement("tr");
-    row.innerHTML = `
-      <td style="padding: 4px;">${log.created_at}</td>
-      <td style="padding: 4px;">${log.object_type}</td>
-      <td style="padding: 4px;">${log.object_id}</td>
-      <td style="padding: 4px;">${log.action}</td>
-      <td style="padding: 4px;">${formatHistoryDetails(log.details)}</td>
-
-      <td style="padding: 4px;">${log.user}</td>
-
-      <td style="padding: 4px;">${log.short_name ?? ""}</td>
-      <td style="padding: 4px;">${log.item_number ?? ""}</td>
-    `;
+    [
+      log.created_at,
+      log.object_type,
+      log.object_id,
+      log.action,
+      formatHistoryDetails(log.details),
+      log.user,
+      log.short_name ?? "",
+      log.item_number ?? ""
+    ].forEach((value) => {
+      const cell = document.createElement("td");
+      cell.style.padding = "4px";
+      cell.textContent = String(value ?? "");
+      row.appendChild(cell);
+    });
     body.appendChild(row);
   });
 
@@ -4335,9 +4225,9 @@ async function loadEnabledPaymentMethods() {
 
   tableBody.innerHTML = '';
 
-  const res = await fetch(`${API}/settlement/payment-methods`, {
+  const res = await window.AppAuth.authenticatedFetch(`${API}/settlement/payment-methods`, {
     headers: {
-      Authorization: token,
+      "X-CSRF-Token": token,
       "Accept": "application/json"
     }
   });
@@ -4397,8 +4287,8 @@ function formatHistoryDetails(details) {
 }
 
 document.getElementById("export-audit-log").onclick = async () => {
-  const res = await fetch(`${API}/maintenance/audit-log/export`, {
-    headers: { Authorization: token }
+  const res = await window.AppAuth.authenticatedFetch(`${API}/maintenance/audit-log/export`, {
+    headers: { "X-CSRF-Token": token }
   });
 
   if (!res.ok) {

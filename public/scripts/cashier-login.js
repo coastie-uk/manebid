@@ -1,10 +1,10 @@
-(() => {
+(async () => {
   "use strict";
 
   const API = "/api";
   const REFRESH_MS = 10000;
   const BUYER_DISPLAY_STATE_KEY = "cashierBuyerDisplayState";
-  const CASHIER_ASSET_VERSION = window.__CASHIER_ASSET_VERSION__ || "2026-05-19-payments-ui-1";
+  const CASHIER_ASSET_VERSION = window.__CASHIER_ASSET_VERSION__ || "2026-07-02-poll-1";
 
   const $ = (id) => document.getElementById(id);
   const els = {
@@ -50,7 +50,7 @@
   const cashierPreferenceController = window.AppAuth?.createPreferenceController?.({ pageKey: "cashier" }) || null;
   const cashierPreferences = cashierPreferenceController?.getPagePreferences?.() || {};
 
-  let authToken = window.AppAuth?.getToken?.() || localStorage.getItem("cashierToken");
+  let authToken = window.AppAuth?.getToken?.() || null;
   let auctions = [];
   let refreshTimer = null;
   let settlementScriptLoaded = false;
@@ -255,179 +255,13 @@
     return getBuyerDisplayFallbackState();
   }
 
-  function buildBuyerDisplayHtml() {
-    const currencySymbol = localStorage.getItem("currencySymbol") || "£";
-    const uploadBase = "/api/uploads";
-    const currentTheme = getResolvedTheme();
-    return `<!DOCTYPE html>
-<html lang="en" data-theme="${currentTheme}" style="color-scheme: ${currentTheme};">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Buyer Display</title>
-  <link rel="stylesheet" href="/styles/admin-styles.css?v=${encodeURIComponent(CASHIER_ASSET_VERSION)}">
-  <link rel="stylesheet" href="/styles/settlement.css?v=${encodeURIComponent(CASHIER_ASSET_VERSION)}">
-</head>
-<body class="buyer-display-page">
-  <main class="buyer-display-shell">
-    <section class="buyer-display-card">
-      <header class="buyer-display-head">
-        <h1 id="buyer-display-auction" class="buyer-display-auction">Auction</h1>
-      </header>
-      <div class="buyer-display-body">
-        <div id="buyer-display-content"></div>
-      </div>
-    </section>
-  </main>
-  <script>
-    (() => {
-      const money = (value) => ${JSON.stringify(currencySymbol)} + Number(value || 0).toFixed(2);
-      const escapeHtml = (value) => String(value ?? '')
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#39;');
-      const contentEl = document.getElementById('buyer-display-content');
-      const auctionEl = document.getElementById('buyer-display-auction');
-      const THUMBNAIL_LIMIT = 6;
-      let lastRenderedKey = null;
-
-      function applyTheme(theme) {
-        const resolvedTheme = theme === 'dark' ? 'dark' : 'light';
-        document.documentElement.dataset.theme = resolvedTheme;
-        document.documentElement.style.colorScheme = resolvedTheme;
-      }
-
-      function getState() {
-        try {
-          if (window.opener && !window.opener.closed && typeof window.opener.__getCashierBuyerDisplayState__ === 'function') {
-            const liveState = window.opener.__getCashierBuyerDisplayState__();
-            if (liveState) return liveState;
-          }
-          const raw = localStorage.getItem(${JSON.stringify(BUYER_DISPLAY_STATE_KEY)});
-          if (raw) return JSON.parse(raw);
-          return null;
-        } catch (_) {
-          return null;
-        }
-      }
-
-      function renderEmpty(message) {
-        contentEl.innerHTML = '<div class="buyer-display-empty">' + escapeHtml(message) + '</div>';
-      }
-
-      function render(state) {
-        if (state?.theme) applyTheme(state.theme);
-        if (auctionEl) {
-          auctionEl.textContent = state?.auctionName || 'Buyer Display';
-        }
-
-        if (!state) {
-          renderEmpty('Cashier page unavailable. Keep this window open and return to the cashier screen.');
-          return;
-        }
-
-        const bidder = state.selectedBidder;
-        if (!bidder) {
-          renderEmpty('Select a paddle on the cashier screen to show the buyer review here.');
-          return;
-        }
-
-        const lots = Array.isArray(bidder.lots) ? bidder.lots : [];
-        const pictureLots = lots.filter((lot) => lot.photo_url);
-        const visibleThumbs = state.showPictures ? pictureLots.slice(0, THUMBNAIL_LIMIT) : [];
-        const extraThumbs = state.showPictures ? Math.max(0, pictureLots.length - visibleThumbs.length) : 0;
-        const rows = lots.length
-          ? lots.map((lot) => \`
-              <tr>
-                <td>\${escapeHtml(lot.item_number)}</td>
-                <td>\${escapeHtml(lot.description)}</td>
-                <td>\${escapeHtml(money(lot.hammer_price))}</td>
-              </tr>\`).join('')
-          : '<tr><td colspan="3">No lots won</td></tr>';
-        const thumbnails = visibleThumbs.length
-          ? \`
-            <section class="buyer-display-section">
-              <h3 class="detail-heading">Item previews</h3>
-              <div class="buyer-display-thumbnails">
-                \${visibleThumbs.map((lot) => \`
-                  <figure class="buyer-display-thumb">
-                    <img src="${uploadBase}/preview_\${escapeHtml(lot.photo_url)}" alt="Lot \${escapeHtml(lot.item_number)} preview" loading="eager">
-                    <figcaption>Lot \${escapeHtml(lot.item_number)}</figcaption>
-                  </figure>\`).join('')}
-                \${extraThumbs > 0 ? \`<div class="buyer-display-thumb buyer-display-thumb-more">+\${escapeHtml(extraThumbs)} more</div>\` : ''}
-              </div>
-            </section>\`
-          : '';
-
-        contentEl.innerHTML = \`
-          <section class="buyer-display-section">
-            <h2 class="buyer-display-paddle">\${escapeHtml(bidder.bidder_label || ('Paddle #' + bidder.paddle_number))}</h2>
-          </section>
-          <section class="buyer-display-section">
-            <h3 class="detail-heading">Lots won</h3>
-            <div class="table-wrap buyer-display-table">
-              <table>
-                <thead>
-                  <tr><th>Lot</th><th>Title</th><th>Price</th></tr>
-                </thead>
-                <tbody>\${rows}</tbody>
-              </table>
-            </div>
-            <div class="section-total">Total lots: \${escapeHtml(money(bidder.lots_total))}</div>
-          </section>
-          \${thumbnails}
-          <section class="buyer-display-section">
-            <h3 class="detail-heading">Summary</h3>
-            <div class="buyer-display-summary">
-              <div class="summary-card">
-                <span class="summary-card-label">Paid</span>
-                <span class="summary-card-value">\${escapeHtml(money(bidder.payments_total))}</span>
-              </div>
-              <div class="summary-card">
-                <span class="summary-card-label">Donations</span>
-                <span class="summary-card-value">\${escapeHtml(money(bidder.donations_total))}</span>
-              </div>
-              <div class="summary-card">
-                <span class="summary-card-label">Balance</span>
-                <span class="summary-card-value">\${escapeHtml(money(bidder.balance))}</span>
-              </div>
-            </div>
-          </section>\`;
-      }
-
-      function sync() {
-        const nextState = getState();
-        const nextKey = JSON.stringify(nextState);
-        if (nextKey === lastRenderedKey) return;
-        lastRenderedKey = nextKey;
-        render(nextState);
-      }
-
-      window.__renderBuyerDisplayState__ = (state) => {
-        lastRenderedKey = JSON.stringify(state);
-        render(state);
-      };
-
-      sync();
-      window.setInterval(sync, 3000);
-    })();
-  </script>
-</body>
-</html>`;
-  }
-
   function openBuyerDisplay() {
-    buyerDisplayWindow = window.open("", "cashierBuyerDisplayWindow", "popup=yes,width=980,height=760,resizable=yes,scrollbars=yes");
+    buyerDisplayWindow = window.open("/cashier/buyer-display.html", "cashierBuyerDisplayWindow", "popup=yes,width=980,height=760,resizable=yes,scrollbars=yes");
     if (!buyerDisplayWindow) {
       showMessage("Buyer display popup was blocked. Allow popups for this site and try again.", "error");
       return;
     }
 
-    buyerDisplayWindow.document.open();
-    buyerDisplayWindow.document.write(buildBuyerDisplayHtml());
-    buyerDisplayWindow.document.close();
     buyerDisplayWindow.focus();
     window.setTimeout(() => {
       pushBuyerDisplayState(getBuyerDisplayState());
@@ -508,8 +342,8 @@
     els.aboutModal.hidden = true;
   }
 
-  function logout() {
-    window.AppAuth?.clearAllSessions?.({ broadcast: true });
+  async function logout() {
+    await window.AppAuth?.logout?.();
     closeAboutModal();
     window.location.replace("/login.html?reason=signed_out");
   }
@@ -591,11 +425,9 @@
     });
   }
 
-  async function validateSession(token) {
-    const res = await fetch(`${API}/validate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token })
+  async function validateSession() {
+    const res = await window.AppAuth.authenticatedFetch(`${API}/validate`, {
+      method: "POST"
     });
 
     const data = await res.json().catch(() => ({}));
@@ -604,10 +436,10 @@
   }
 
   async function fetchAuctions() {
-    const res = await fetch(`${API}/list-auctions`, {
+    const res = await window.AppAuth.authenticatedFetch(`${API}/list-auctions`, {
       method: "POST",
       headers: {
-        Authorization: authToken,
+        "X-CSRF-Token": authToken,
         "Content-Type": "application/json"
       }
     });
@@ -736,10 +568,10 @@
       return;
     }
 
-    const res = await fetch(`${API}/change-password`, {
+    const res = await window.AppAuth.authenticatedFetch(`${API}/change-password`, {
       method: "POST",
       headers: {
-        Authorization: authToken,
+        "X-CSRF-Token": authToken,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ currentPassword, newPassword })
@@ -749,6 +581,8 @@
     if (res.ok) {
       showMessage(data.message || "Password updated.", "success");
       showError("");
+      window.AppAuth?.clearAllSessions?.({ broadcast: true });
+      window.setTimeout(() => window.location.replace("/login.html?reason=signed_out"), 800);
     } else {
       showError(data.error || "Failed to change password");
     }
@@ -843,11 +677,11 @@
   setAuctionActionAvailability(false);
   updateAuctionStatusPills();
 
-  if (authToken) {
-    validateSession(authToken)
-      .then((data) => startDashboard(data))
-      .catch(() => {
-        window.AppAuth?.clearSharedSession?.({ broadcast: false });
-      });
+  const initialSession = window.__APP_AUTH_READY__
+    ? await window.__APP_AUTH_READY__
+    : await window.AppAuth?.refreshSession?.();
+  if (initialSession?.user) {
+    authToken = initialSession.csrf_token;
+    await startDashboard(initialSession);
   }
 })();

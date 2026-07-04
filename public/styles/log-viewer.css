@@ -1,0 +1,46 @@
+body {
+  margin: 0;
+}
+
+.log-viewer-shell {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.log-viewer-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.log-viewer-head h1,
+.log-viewer-head p {
+  margin: 0;
+}
+
+.log-viewer-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+#popup-server-logs {
+  background: #0f1720;
+  color: #dbe7f5;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  height: calc(100vh - 124px);
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
+.log-level {
+  font-weight: 700;
+}
+
+.log-level-debug { color: #a8b3c2; }
+.log-level-info { color: #72d39b; }
+.log-level-warn { color: #ffc26b; }
+.log-level-error { color: #ff7b7b; }

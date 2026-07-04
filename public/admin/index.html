@@ -1,32 +1,18 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-view-key="admin" data-access-role="admin" data-message-poll-ms="5000" data-message-auction-select="auction-select">
 
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Items | ManeBid — Convention Auction Manager</title>
-    <script>
-        (function bootstrapOperatorTheme() {
-            const getBrowserPreferredTheme = () => window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light";
-            try {
-                const session = JSON.parse(localStorage.getItem("operatorSession") || "null");
-                const savedMode = String(session?.user?.preferences?.theme?.mode || "").toLowerCase();
-                const mode = savedMode === "dark" || savedMode === "light"
-                    ? savedMode
-                    : getBrowserPreferredTheme();
-                document.documentElement.dataset.theme = mode;
-                document.documentElement.style.colorScheme = mode;
-            } catch (_error) {
-                const mode = getBrowserPreferredTheme();
-                document.documentElement.dataset.theme = mode;
-                document.documentElement.style.colorScheme = mode;
-            }
-        })();
-    </script>
+    <script src="/scripts/page-bootstrap.js"></script>
     <link rel="stylesheet" href="/styles/admin-styles.css">
     <link rel="icon" type="image/png" href="/images/favicon.png" />
-    <link href="https://cdn.jsdelivr.net/npm/cropperjs@1.5.13/dist/cropper.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/cropperjs@1.5.13/dist/cropper.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/cropperjs@1.5.13/dist/cropper.min.css" rel="stylesheet"
+          integrity="sha384-oMy41mb/qJnpJlpXOF57hSu2KGi47l/UV9+tPNrBOs7/ap5Vubj/3phrCtjutHMQ" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/cropperjs@1.5.13/dist/cropper.min.js"
+            integrity="sha384-r+ljwOAhwY4/kdyzMnuBg7MEVoWpTMp5EYUDntB/E9qzNwL9dAEcNrb2XaV+mJc2" crossorigin="anonymous"></script>
 
 </head>
 
@@ -474,7 +460,7 @@
                     <tbody id="history-table-body"></tbody>
                 </table>
                 <div style="text-align:right; margin-top:10px;">
-                    <button onclick="closeHistoryModal()">Close</button>
+                    <button id="close-history-modal" type="button">Close</button>
                 </div>
             </div>
         </div>
@@ -581,42 +567,16 @@
 
     </main>
     <script src="/scripts/banner.js"></script>
-    <script src="/scripts/session-auth.js"></script>
+    <script src="/scripts/session-auth.js?v=2026-07-02-csrf-1"></script>
     <script src="/scripts/theme.js"></script>
-    <script>
-        window.__APP_PAGE_AUTH__ = {
-            viewKey: "admin",
-            access: { role: "admin" }
-        };
-    </script>
     <script src="/scripts/auth-bootstrap.js"></script>
-    <script>
-        window.AppMessagingConfig = {
-            closedPollMs: 5000,
-            auctionSelectId: "auction-select"
-        };
-    </script>
     <script src="/scripts/messaging.js?v=2026-05-25-admin-poll-1"></script>
-    <script src="/scripts/admin-script.js"></script>
+    <script src="/scripts/admin-script.js?v=2026-07-02-csrf-1"></script>
     <script src="/scripts/daypilot-modal-3.15.1.min.js"></script>
     <script src="/scripts/finalise-lot.js"></script>
 
 
-    <script>
-        document.getElementById('capture-button').addEventListener('click', function () {
-            document.getElementById('edit-photo-live').click();
-        });
-
-        document.getElementById('add-capture-button').addEventListener('click', function () {
-            document.getElementById('add-photo-live').click();
-        });
-
-        document.getElementById("admin-password").addEventListener("keyup", function (event) {
-            if (event.keyCode === 13) {
-                document.getElementById('login-button').click();
-            }
-        })
-    </script>
+    <script src="/scripts/page-events.js"></script>
 
     <footer>
         <p>Developed by Chris Staples ("Coastie") for Festival of Friendship <span title="Hoers">🐴</span></p>

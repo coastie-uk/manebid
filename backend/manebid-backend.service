@@ -5,12 +5,12 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=auction
-Group=auction
-WorkingDirectory=/opt/auction
+User=manebid
+Group=manebid
+WorkingDirectory=/opt/manebid
 Environment=NODE_ENV=production
-EnvironmentFile=/etc/auction/auction.env
-ExecStart=/usr/bin/node /opt/auction/backend.js
+EnvironmentFile=/etc/manebid/manebid.env
+ExecStart=/usr/bin/node /opt/manebid/backend.js
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=65535
@@ -41,8 +41,8 @@ RestrictNamespaces=yes
 
 
 # Allow writes only where needed
-ReadWritePaths=/var/lib/auction /var/log/auction
-ReadOnlyPaths=/opt/auction
+ReadWritePaths=/var/lib/manebid /var/log/manebid
+ReadOnlyPaths=/opt/manebid
 
 [Install]
 WantedBy=multi-user.target

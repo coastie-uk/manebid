@@ -708,9 +708,9 @@ document.addEventListener("DOMContentLoaded", function () {
             }
 
             try {
-                const response = await fetch(`${API}/auctions/${selectedAuctionPublicId}/newitem`, {
+                const response = await window.AppAuth.authenticatedFetch(`${API}/auctions/${selectedAuctionPublicId}/newitem`, {
                     method: "POST",
-                    headers: { "Authorization": token },
+                    headers: { "X-CSRF-Token": token },
                     body: formData
                 });
 
@@ -1013,7 +1013,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function getTokenOrLogout() {
-        const token = window.AppAuth?.getToken?.() || localStorage.getItem("token");
+        const token = window.AppAuth?.getToken?.() || (window.AppAuth?.getToken?.() || null);
         if (!token) {
             logout();
             return null;
@@ -1125,9 +1125,9 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         try {
-            const response = await fetch(`${API}/items/${numericItemId}`, {
+            const response = await window.AppAuth.authenticatedFetch(`${API}/items/${numericItemId}`, {
                 method: "DELETE",
-                headers: { Authorization: token }
+                headers: { "X-CSRF-Token": token }
             });
             const data = await response.json();
             if (!response.ok) {
@@ -1155,9 +1155,9 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         try {
-            const response = await fetch(`${API}/items/${numericItemId}/restore`, {
+            const response = await window.AppAuth.authenticatedFetch(`${API}/items/${numericItemId}/restore`, {
                 method: "POST",
-                headers: { Authorization: token }
+                headers: { "X-CSRF-Token": token }
             });
             const data = await response.json();
             if (!response.ok) {
@@ -1277,14 +1277,14 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     async function fetchSlipPdfBlob(url, defaultMessage) {
-        const token = localStorage.getItem("token");
+        const token = (window.AppAuth?.getToken?.() || null);
         if (!token) {
             logout();
             throw new Error("Not authenticated");
         }
 
-        const response = await fetch(url, {
-            headers: { Authorization: token }
+        const response = await window.AppAuth.authenticatedFetch(url, {
+            headers: { "X-CSRF-Token": token }
         });
 
         if (!response.ok) {
@@ -1310,7 +1310,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     async function confirmSlipPrinted(itemIds) {
-        const token = localStorage.getItem("token");
+        const token = (window.AppAuth?.getToken?.() || null);
         const auctionId = Number(selectedAuctionId);
         if (!token || !auctionId) {
             logout();
@@ -1321,10 +1321,10 @@ document.addEventListener("DOMContentLoaded", function () {
             throw new Error("No printed item ids returned by server");
         }
 
-        const response = await fetch(`${API}/auctions/${auctionId}/items/confirm-slip-print`, {
+        const response = await window.AppAuth.authenticatedFetch(`${API}/auctions/${auctionId}/items/confirm-slip-print`, {
             method: "POST",
             headers: {
-                Authorization: token,
+                "X-CSRF-Token": token,
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({ item_ids: itemIds })
@@ -1434,7 +1434,7 @@ document.addEventListener("DOMContentLoaded", function () {
             return;
         }
 
-        const token = localStorage.getItem("token");
+        const token = (window.AppAuth?.getToken?.() || null);
         if (!token) return logout();
 
         try {
@@ -1447,10 +1447,10 @@ document.addEventListener("DOMContentLoaded", function () {
                 return;
             }
 
-            const response = await fetch(`${API}/auctions/${auctionId}/items/reset-export-tracking`, {
+            const response = await window.AppAuth.authenticatedFetch(`${API}/auctions/${auctionId}/items/reset-export-tracking`, {
                 method: "POST",
                 headers: {
-                    Authorization: token,
+                    "X-CSRF-Token": token,
                     "Content-Type": "application/json"
                 },
                 body: JSON.stringify({ export_type: exportType })
@@ -1614,8 +1614,8 @@ document.addEventListener("DOMContentLoaded", function () {
         const token = getTokenOrLogout();
         if (!token) return;
 
-        const response = await fetch(`${API}/auctions/${selectedAuctionId}/items/manual-entry-sheet?selection_mode=all`, {
-            headers: { Authorization: token }
+        const response = await window.AppAuth.authenticatedFetch(`${API}/auctions/${selectedAuctionId}/items/manual-entry-sheet?selection_mode=all`, {
+            headers: { "X-CSRF-Token": token }
         });
 
         if (!response.ok) {
@@ -1645,8 +1645,8 @@ document.addEventListener("DOMContentLoaded", function () {
         const token = getTokenOrLogout();
         if (!token) return;
 
-        const response = await fetch(`${API}/auctions/${selectedAuctionId}/report-pdf?selection_mode=all`, {
-            headers: { Authorization: token }
+        const response = await window.AppAuth.authenticatedFetch(`${API}/auctions/${selectedAuctionId}/report-pdf?selection_mode=all`, {
+            headers: { "X-CSRF-Token": token }
         });
 
         if (!response.ok) {
@@ -1678,8 +1678,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
         const params = new URLSearchParams();
         params.set("bidder_mode", bidderMode || "all");
-        const response = await fetch(`${API}/auctions/${selectedAuctionId}/bidder-report-pdf?${params.toString()}`, {
-            headers: { Authorization: token }
+        const response = await window.AppAuth.authenticatedFetch(`${API}/auctions/${selectedAuctionId}/bidder-report-pdf?${params.toString()}`, {
+            headers: { "X-CSRF-Token": token }
         });
 
         if (!response.ok) {
@@ -1763,8 +1763,8 @@ document.addEventListener("DOMContentLoaded", function () {
         const token = getTokenOrLogout();
         if (!token) return;
 
-        const response = await fetch(`${API}/export-jobs/pptx/status`, {
-            headers: { Authorization: token }
+        const response = await window.AppAuth.authenticatedFetch(`${API}/export-jobs/pptx/status`, {
+            headers: { "X-CSRF-Token": token }
         });
 
         if (!response.ok) {
@@ -1795,8 +1795,8 @@ document.addEventListener("DOMContentLoaded", function () {
         const token = getTokenOrLogout();
         if (!token) return;
 
-        const response = await fetch(job.download_url, {
-            headers: { Authorization: token }
+        const response = await window.AppAuth.authenticatedFetch(job.download_url, {
+            headers: { "X-CSRF-Token": token }
         });
         if (!response.ok) {
             let message = "Failed to download PPTX export";
@@ -1839,10 +1839,10 @@ document.addEventListener("DOMContentLoaded", function () {
             return;
         }
 
-        const response = await fetch(`${API}/export-jobs/pptx/cancel`, {
+        const response = await window.AppAuth.authenticatedFetch(`${API}/export-jobs/pptx/cancel`, {
             method: "POST",
             headers: {
-                Authorization: token,
+                "X-CSRF-Token": token,
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({ job_id: latestPptxJob.id })
@@ -1902,10 +1902,10 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!token) return;
 
         const endpoint = exportType === "cards" ? "generate-cards" : "generate-pptx";
-        const response = await fetch(`${API}/${endpoint}`, {
+        const response = await window.AppAuth.authenticatedFetch(`${API}/${endpoint}`, {
             method: "POST",
             headers: {
-                Authorization: token,
+                "X-CSRF-Token": token,
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
@@ -1935,10 +1935,10 @@ document.addEventListener("DOMContentLoaded", function () {
         const token = getTokenOrLogout();
         if (!token) return;
 
-        const response = await fetch(`${API}/export-csv`, {
+        const response = await window.AppAuth.authenticatedFetch(`${API}/export-csv`, {
             method: "POST",
             headers: {
-                Authorization: token,
+                "X-CSRF-Token": token,
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
@@ -2231,25 +2231,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Check if admin is already authenticated
     async function checkToken() {
-        const token = localStorage.getItem("token");
-
-        if (token) {
-            const response = await fetch(`${API}/validate`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ token })
-            });
-            const data = await response.json();
-            if (response.ok) {
-                setAdminSessionMeta(data.user, data.versions);
-                showSection("admin-section");
-                await refreshAdminData({ showErrors: true, announceConnectivity: false });
-                startAutoRefresh();
-            } else {
-                logout();
-                document.getElementById("error-message").innerText = data.error;
-                showMessage("Authentication: " + data.error, "error");
-            }
+        const session = window.__APP_AUTH_READY__
+            ? await window.__APP_AUTH_READY__
+            : await window.AppAuth?.refreshSession?.();
+        if (session?.user) {
+            setAdminSessionMeta(session.user, session.versions);
+            showSection("admin-section");
+            await refreshAdminData({ showErrors: true, announceConnectivity: false });
+            startAutoRefresh();
         }
     }
 
@@ -2323,13 +2312,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
     async function loadAuctions(options = {}) {
         const { suppressErrors = false, rethrow = false } = options;
-        const token = localStorage.getItem("token");
+        const token = (window.AppAuth?.getToken?.() || null);
 
         try {
-            const res = await fetch(`${API}/list-auctions`, {
+            const res = await window.AppAuth.authenticatedFetch(`${API}/list-auctions`, {
                 method: "POST",
                 headers: {
-                    "Authorization": token,
+                    "X-CSRF-Token": token,
                     "Content-Type": "application/json"
                 },
             });
@@ -2523,11 +2512,11 @@ document.addEventListener("DOMContentLoaded", function () {
             return;
         }
 
-        const token = localStorage.getItem("token");
-        const response = await fetch(`${API}/change-password`, {
+        const token = (window.AppAuth?.getToken?.() || null);
+        const response = await window.AppAuth.authenticatedFetch(`${API}/change-password`, {
             method: "POST",
             headers: {
-                "Authorization": token,
+                "X-CSRF-Token": token,
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({ currentPassword, newPassword })
@@ -2535,6 +2524,8 @@ document.addEventListener("DOMContentLoaded", function () {
         const data = await response.json();
         if (response.ok) {
             showMessage(data.message || "Password updated.", "success");
+            window.AppAuth?.clearAllSessions?.({ broadcast: true });
+            window.setTimeout(() => window.location.replace("/login.html?reason=signed_out"), 800);
         } else {
             showMessage(data.error || "Failed to change password.", "error");
         }
@@ -2721,8 +2712,8 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!Number.isInteger(auctionId) || auctionId <= 0) {
             throw new Error("Please select an auction first");
         }
-        const response = await fetch(`${API}/auctions/${auctionId}/bidders`, {
-            headers: { Authorization: localStorage.getItem("token") }
+        const response = await window.AppAuth.authenticatedFetch(`${API}/auctions/${auctionId}/bidders`, {
+            headers: { "X-CSRF-Token": (window.AppAuth?.getToken?.() || null) }
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || "Failed to load bidders");
@@ -2731,11 +2722,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
     async function saveBidderName(bidderId, name) {
         const auctionId = Number(selectedAuctionId);
-        const response = await fetch(`${API}/auctions/${auctionId}/bidders/${bidderId}`, {
+        const response = await window.AppAuth.authenticatedFetch(`${API}/auctions/${auctionId}/bidders/${bidderId}`, {
             method: "PATCH",
             headers: {
                 "Content-Type": "application/json",
-                Authorization: localStorage.getItem("token")
+                "X-CSRF-Token": (window.AppAuth?.getToken?.() || null)
             },
             body: JSON.stringify({ name })
         });
@@ -2746,11 +2737,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
     async function addOrUpdateBidder(paddleNumber, name) {
         const auctionId = Number(selectedAuctionId);
-        const response = await fetch(`${API}/auctions/${auctionId}/bidders`, {
+        const response = await window.AppAuth.authenticatedFetch(`${API}/auctions/${auctionId}/bidders`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                Authorization: localStorage.getItem("token")
+                "X-CSRF-Token": (window.AppAuth?.getToken?.() || null)
             },
             body: JSON.stringify({ paddle_number: Number(paddleNumber), name })
         });
@@ -2860,8 +2851,8 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
 
-    function logout() {
-        window.AppAuth?.clearAllSessions?.({ broadcast: true });
+    async function logout() {
+        await window.AppAuth?.logout?.();
         stopPptxStatusPolling();
         latestPptxJob = null;
         autoDownloadJobId = null;
@@ -3174,7 +3165,7 @@ document.addEventListener("DOMContentLoaded", function () {
     async function loadItems(options = {}) {
         const { suppressErrors = false, rethrow = false } = options;
         closeItemContextMenu();
-        const token = localStorage.getItem("token");
+        const token = (window.AppAuth?.getToken?.() || null);
         if (!token) return logout();
         const showBidCols = showBidStates.includes(window.currentAuctionStatus);
         const auctionId = parseInt(selectedAuctionId, 10);
@@ -3185,7 +3176,7 @@ document.addEventListener("DOMContentLoaded", function () {
         try {
 
             const deletedParam = showDeletedItems ? "&show_deleted=true" : "";
-            const response = await fetch(`${API}/auctions/${auctionId}/items?sort=${selectedOrder}&field=${selectedSort}${deletedParam}`, { headers: { Authorization: token } })
+            const response = await window.AppAuth.authenticatedFetch(`${API}/auctions/${auctionId}/items?sort=${selectedOrder}&field=${selectedSort}${deletedParam}`, { headers: { "X-CSRF-Token": token } })
 
             // Check for 403 (unauthorized)
             if (response.status === 403) {
@@ -3301,13 +3292,13 @@ document.addEventListener("DOMContentLoaded", function () {
                             className: "history-button",
                             title: "Display item history",
                             icon: ACTION_ICONS.history,
-                            attributes: `onclick="showItemHistory(${item.id})"`
+                            attributes: `data-id="${item.id}"`
                         })}
                         ${renderIconButton({
                             className: itemEditState.canEdit ? "edit-item-button" : "view-item-button",
                             title: editTitle,
                             icon: editIcon,
-                            attributes: `onclick="editItem('${encodedItem}')" data-default-title="Edit item" data-auction-status="${escapeHtml(auctionStatus)}"`
+                            attributes: `data-id="${item.id}" data-default-title="Edit item" data-auction-status="${escapeHtml(auctionStatus)}"`
                         })}
                         ${isDeleted ? renderIconButton({
                             className: "restore-item-button",
@@ -3350,6 +3341,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 </div>`}
                 </td>
             `;
+                row.querySelector(".history-button")?.addEventListener("click", () => window.showItemHistory(item.id));
+                row.querySelector(".edit-item-button, .view-item-button")?.addEventListener("click", () => editItem(encodedItem));
                 itemsTableBody.appendChild(row);
             });
 
@@ -3399,7 +3392,7 @@ document.addEventListener("DOMContentLoaded", function () {
             select.addEventListener("change", async function () {
                 const currentEditId = parseInt(this.dataset.id, 10);
                 const targetAuctionId = parseInt(this.value, 10);
-                const token = localStorage.getItem("token");
+                const token = (window.AppAuth?.getToken?.() || null);
                 const auctionId = parseInt(selectedAuctionId, 10);
 
 
@@ -3407,11 +3400,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
                 try {
-                    const response = await fetch(`${API}/auctions/${auctionId}/items/${currentEditId}/move-auction/${targetAuctionId}`, {
+                    const response = await window.AppAuth.authenticatedFetch(`${API}/auctions/${auctionId}/items/${currentEditId}/move-auction/${targetAuctionId}`, {
                         method: "POST",
                 //        body: formData,
                         
-                        headers: { Authorization: token }
+                        headers: { "X-CSRF-Token": token }
 
                     })
 
@@ -3431,16 +3424,25 @@ document.addEventListener("DOMContentLoaded", function () {
 
          
 
-            const token = localStorage.getItem("token");
+            const token = (window.AppAuth?.getToken?.() || null);
             const modal = document.getElementById("history-modal");
             const tbody = document.getElementById("history-table-body");
 
-            tbody.innerHTML = `<tr><td colspan="4" style="padding:6px;">Loading...</td></tr>`;
+            const showHistoryMessage = (message) => {
+                const row = document.createElement("tr");
+                const cell = document.createElement("td");
+                cell.colSpan = 4;
+                cell.style.padding = "6px";
+                cell.textContent = message;
+                row.appendChild(cell);
+                tbody.replaceChildren(row);
+            };
+            showHistoryMessage("Loading...");
             modal.style.display = "flex";
 
             try {
-                const res = await fetch(`${API}/audit-log?object_type=item&object_id=${itemId}`, {
-                    headers: { Authorization: token }
+                const res = await window.AppAuth.authenticatedFetch(`${API}/audit-log?object_type=item&object_id=${itemId}`, {
+                    headers: { "X-CSRF-Token": token }
                 });
 
                 if (!res.ok) throw new Error("Failed to load history");
@@ -3448,21 +3450,24 @@ document.addEventListener("DOMContentLoaded", function () {
                 const history = await res.json();
 
                 if (!Array.isArray(history.logs) || history.logs.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="4" style="padding:6px;">No history found for this item.</td></tr>`;
+                    showHistoryMessage("No history found for this item.");
                     return;
                 }
 
-                tbody.innerHTML = history.logs.map(record => `
-            <tr>
-                <td style="padding:6px;">${record.created_at}</td>
-                <td style="padding:6px;">${record.user || "?"}</td>
-                <td style="padding:6px;">${record.action}</td>
-                <td style="padding:6px;">${formatHistoryDetails(record.details)}</td>
-            </tr>
-        `).join("");
+                tbody.replaceChildren(...history.logs.map((record) => {
+                    const row = document.createElement("tr");
+                    [record.created_at, record.user || "?", record.action, formatHistoryDetails(record.details)]
+                        .forEach((value) => {
+                            const cell = document.createElement("td");
+                            cell.style.padding = "6px";
+                            cell.textContent = String(value ?? "");
+                            row.appendChild(cell);
+                        });
+                    return row;
+                }));
 
             } catch (err) {
-                tbody.innerHTML = `<tr><td colspan="4" style="padding:6px; color:red;">Error: ${err.message}</td></tr>`;
+                showHistoryMessage(`Error: ${err.message}`);
             }
         }
 
@@ -3480,7 +3485,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 .replace(/"/g, "")           // remove quotes
                 .replace(/,/g, ", ")         // add space after commas
                 .replace(/:/g, ": ")        // add space after colons
-                .replace(/\n/g, "<br>")      // convert newlines to <br>
+                .replace(/\n/g, " ")         // keep details as plain text
                 .replace(/_/g, " "); // replace _ with spaces
         }
 
@@ -3528,11 +3533,11 @@ document.addEventListener("DOMContentLoaded", function () {
         showMessage(`Duplicating item....`, "info");
 
         try {
-            const res = await fetch(`${API}/auctions/${selectedAuctionId}/items/${id}/move-after/${id}`, {
+            const res = await window.AppAuth.authenticatedFetch(`${API}/auctions/${selectedAuctionId}/items/${id}/move-after/${id}`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    "Authorization": localStorage.getItem("token")
+                    "X-CSRF-Token": (window.AppAuth?.getToken?.() || null)
                 },
                 body: JSON.stringify({
                     id,
@@ -3568,12 +3573,12 @@ document.addEventListener("DOMContentLoaded", function () {
             const moveButton = movePanel?.closest(".actions-cell")?.querySelector(".move-toggle");
             if (moveButton) moveButton.disabled = true;
 
-            const res = await fetch(`${API}/auctions/${selectedAuctionId}/items/${id}/move-after/${after_id}`, {
+            const res = await window.AppAuth.authenticatedFetch(`${API}/auctions/${selectedAuctionId}/items/${id}/move-after/${after_id}`, {
 
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    "Authorization": localStorage.getItem("token")
+                    "X-CSRF-Token": (window.AppAuth?.getToken?.() || null)
                 },
                 body: JSON.stringify({
                     id,
@@ -3694,11 +3699,11 @@ document.addEventListener("DOMContentLoaded", function () {
             formData.append("photo", addPhotoInput.files[0]);
         }
 
-        var token = localStorage.getItem("token");
+        var token = (window.AppAuth?.getToken?.() || null);
 
-        fetch(`${API}/auctions/${selectedAuctionPublicId}/newitem`, {
+        window.AppAuth.authenticatedFetch(`${API}/auctions/${selectedAuctionPublicId}/newitem`, {
             method: "POST",
-            headers: { "Authorization": token },
+            headers: { "X-CSRF-Token": token },
             body: formData
         })
 
@@ -3786,8 +3791,8 @@ document.addEventListener("DOMContentLoaded", function () {
         itemDetailsModal.hidden = false;
 
         try {
-            const response = await fetch(`${API}/auctions/${selectedAuctionId}/items/${currentEditId}`, {
-                headers: { Authorization: token }
+            const response = await window.AppAuth.authenticatedFetch(`${API}/auctions/${selectedAuctionId}/items/${currentEditId}`, {
+                headers: { "X-CSRF-Token": token }
             });
             const data = await response.json();
             if (!response.ok) {
@@ -3882,10 +3887,10 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         try {
-            const response = await fetch(`${API}/auctions/${auctionId}/items/${currentEditId}/update`, {
+            const response = await window.AppAuth.authenticatedFetch(`${API}/auctions/${auctionId}/items/${currentEditId}/update`, {
                 method: "POST",
                 body: formData,
-                headers: { Authorization: token }
+                headers: { "X-CSRF-Token": token }
             });
             const data = await response.json();
             if (!response.ok) {
@@ -4102,7 +4107,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
     document.getElementById('auctionState')?.addEventListener('change', async () => {
-        var token = localStorage.getItem("token");
+        var token = (window.AppAuth?.getToken?.() || null);
         if (!token) return logout();
         closeMenuGroups();
 
@@ -4111,10 +4116,10 @@ document.addEventListener("DOMContentLoaded", function () {
         const newStatus = selectAuctionState.value;
 
         try {
-            const res = await fetch(`${API}/auctions/update-status`, {
+            const res = await window.AppAuth.authenticatedFetch(`${API}/auctions/update-status`, {
                 method: 'POST',
                 headers: {
-                    Authorization: token,
+                    "X-CSRF-Token": token,
                     "Content-Type": "application/json"
                 },
                 body: JSON.stringify({ auction_id: selectedAuctionId, status: newStatus })

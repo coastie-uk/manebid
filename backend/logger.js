@@ -8,6 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const { LOG_LEVEL, LOG_DIR, LOG_NAME } = require('./config');
+const { redactSensitive } = require('./redact');
 const logFilePath = path.join(LOG_DIR, LOG_NAME);
 const archiveDir = path.join(LOG_DIR); // store rotated logs here
 
@@ -23,7 +24,6 @@ const logLevels = {
 };
 
 const MAX_LOG_SIZE_MB = 1;
-
 // default to INFO if setLogLevel not called
 let currentLogLevel = logLevels.INFO;
 
@@ -57,7 +57,7 @@ function getLevelName(levelValue) {
 // Extract client IP from request
 function getClientIp(req) {
   return (
-    req.headers['x-forwarded-for']?.split(',')[0]?.trim() || // if behind proxy
+    req.ip ||
     req.socket?.remoteAddress ||
     req.connection?.remoteAddress ||
     'unknown'
@@ -72,7 +72,7 @@ function log(api, severityValue, message, ip = 'unknown') {
   // Build the log entry
   const timestamp = new Date().toISOString();
   const severity = getLevelName(severityValue);
-  const entry = `[${timestamp}] [${severity}] [${ip}] [${api}] ${message}`;
+  const entry = `[${timestamp}] [${severity}] [${ip}] [${redactSensitive(api)}] ${redactSensitive(message)}`;
 
   checkAndRotateLogIfNeeded();
 
@@ -131,5 +131,6 @@ module.exports = {
   setLogLevel,
   logFromRequest,
   createLogger,
-  log
+  log,
+  redactSensitive
 };

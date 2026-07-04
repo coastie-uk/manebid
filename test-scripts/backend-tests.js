@@ -308,8 +308,9 @@ addTest("B-001a","setup: login slideshow role directly", async () => {
     })
   });
   await expectStatus(res, 200);
-  assert.ok(json && json.token, "Slideshow login failed");
-  tokens.slideshow = json.token;
+  assert.ok(res._session, "Slideshow login failed");
+  assert.equal(json?.token, undefined, "Login must not expose a JWT");
+  tokens.slideshow = res._session;
 });
 
 addTest("B-001b","maintenance without manage_users cannot list users", async () => {
@@ -330,7 +331,7 @@ addTest("B-001c","logout-now invalidates existing token", async () => {
     })
   });
   await expectStatus(loginBefore.res, 200);
-  assert.ok(loginBefore.json?.token, "Expected cashier token before logout-now");
+  assert.ok(loginBefore.res._session, "Expected cashier session before logout-now");
 
   const logoutNow = await fetchJson(`${baseUrl}/maintenance/users/${encodeURIComponent(managedUsers.cashier.username)}/logout-now`, {
     method: "POST",
@@ -340,8 +341,7 @@ addTest("B-001c","logout-now invalidates existing token", async () => {
 
   const validateAfter = await fetchJson(`${baseUrl}/validate`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token: loginBefore.json.token })
+    headers: authHeaders(loginBefore.res._session)
   });
   await expectStatus(validateAfter.res, 403);
   assert.equal(validateAfter.json?.reason, "remote_logout");
@@ -695,11 +695,73 @@ addTest("B-003","POST /login success admin", async () => {
     })
   });
   await expectStatus(res, 200);
-  assert.ok(json && json.token, "Missing token");
+  assert.ok(res._session, "Missing session cookie");
+  assert.equal(json?.token, undefined, "Login must not expose a JWT");
   assert.ok(Array.isArray(json?.user?.permissions), "Expected permissions array");
   assert.ok(json?.user?.preferences, "Expected preferences object on login");
   assert.deepEqual(json?.user?.preferences?.theme, { mode: "system" });
   assert.equal(json?.landing_path, "/admin/index.html");
+});
+
+addTest("B-003-cookie","login sets hardened cookie and CSRF metadata", async () => {
+  const login = await fetchJson(`${baseUrl}/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: managedUsers.admin.username, password: managedUsers.admin.password })
+  });
+  await expectStatus(login.res, 200);
+  assert.ok(login.res._session?.setCookie.includes("HttpOnly"), "Expected HttpOnly cookie");
+  assert.match(login.res._session?.setCookie || "", /SameSite=Strict/i);
+  assert.match(login.res._session?.setCookie || "", /Max-Age=43200/i);
+  if (baseUrl.startsWith("https://")) assert.match(login.res._session?.setCookie || "", /;\s*Secure/i);
+  assert.ok(login.json?.csrf_token);
+  assert.equal(login.json?.token, undefined);
+});
+
+addTest("B-003-csrf","authenticated state change rejects missing CSRF header", async () => {
+  const { res } = await fetchJson(`${baseUrl}/preferences`, {
+    method: "POST",
+    headers: { Cookie: tokens.admin.cookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ preferences: {} })
+  });
+  await expectStatus(res, 403);
+});
+
+addTest("B-003-bearer","legacy bearer authentication is rejected", async () => {
+  const { res } = await fetchJson(`${baseUrl}/list-auctions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${tokens.admin.cookie.split("=")[1]}`, "Content-Type": "application/json" },
+    body: "{}"
+  });
+  await expectStatus(res, 403);
+});
+
+addTest("B-003-logout","logout clears the browser cookie", async () => {
+  const session = await loginAs("admin", managedUsers.admin.password, managedUsers.admin.username);
+  const logout = await fetchJson(`${baseUrl}/logout`, {
+    method: "POST",
+    headers: authHeaders(session)
+  });
+  await expectStatus(logout.res, 204);
+  assert.match(logout.res.headers.get("set-cookie") || "", /manebid_session=;/);
+});
+
+addTest("B-003-kiosk","kiosk conversion replaces the cookie with slideshow-only scope", async () => {
+  const kiosk = await fetchJson(`${baseUrl}/session/kiosk`, {
+    method: "POST",
+    headers: authHeaders(tokens.bootstrap)
+  });
+  await expectStatus(kiosk.res, 200);
+  assert.ok(kiosk.res._session);
+  assert.equal(kiosk.json?.session_scope, "slideshow");
+  assert.deepEqual(kiosk.json?.user?.roles, ["slideshow"]);
+  assert.deepEqual(kiosk.json?.user?.permissions, []);
+  const privileged = await fetchJson(`${baseUrl}/list-auctions`, {
+    method: "POST",
+    headers: authHeaders(kiosk.res._session, { "Content-Type": "application/json" }),
+    body: "{}"
+  });
+  await expectStatus(privileged.res, 403);
 });
 
 addTest("B-003a","POST /login success live_feed permission only lands on live feed", async () => {
@@ -757,7 +819,8 @@ addTest("B-006","POST /login success missing role", async () => {
     body: JSON.stringify({ username: managedUsers.admin.username, password: managedUsers.admin.password })
   });
   await expectStatus(res, 200);
-  assert.ok(json?.token, "Expected token without explicit role");
+  assert.ok(res._session, "Expected session without explicit role");
+  assert.equal(json?.token, undefined);
 });
 
 addTest("B-006a","POST /login failure missing username", async () => {
@@ -785,13 +848,13 @@ addTest("B-006c","POST /login success invalid legacy role value ignored", async 
     body: JSON.stringify({ username: managedUsers.admin.username, role: "nope", password: managedUsers.admin.password })
   });
   await expectStatus(res, 200);
-  assert.ok(json?.token, "Expected token when legacy role is ignored");
+  assert.ok(res._session, "Expected session when legacy role is ignored");
 });
 
 addTest("B-006d","POST /login success even when legacy role mismatches user access", async () => {
   const { res, json } = await attemptLoginWith(managedUsers.admin.username, "maintenance", managedUsers.admin.password);
   await expectStatus(res, 200);
-  assert.ok(json?.token, "Expected token when legacy role is ignored");
+  assert.ok(res._session, "Expected session when legacy role is ignored");
 });
 
 addTest("B-006e","POST /change-password failure wrong current password", async () => {
@@ -826,11 +889,11 @@ addTest("B-006g","POST /change-password success and login with new password", as
 
   const newLogin = await attemptLoginWith(managedUsers.selfService.username, "cashier", nextPassword);
   await expectStatus(newLogin.res, 200);
-  assert.ok(newLogin.json && newLogin.json.token, "Expected login token with updated password");
+  assert.ok(newLogin.res._session, "Expected login session with updated password");
 
   const revert = await fetchJson(`${baseUrl}/change-password`, {
     method: "POST",
-    headers: authHeaders(newLogin.json.token, { "Content-Type": "application/json" }),
+    headers: authHeaders(newLogin.res._session, { "Content-Type": "application/json" }),
     body: JSON.stringify({ currentPassword: nextPassword, newPassword: managedUsers.selfService.password })
   });
   await expectStatus(revert.res, 200);
@@ -840,17 +903,17 @@ addTest("B-006g","POST /change-password success and login with new password", as
 addTest("B-007","POST /validate success", async () => {
   const { res, json } = await fetchJson(`${baseUrl}/validate`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token: context.token })
+    headers: authHeaders(context.token)
   });
   await expectStatus(res, 200);
-  assert.ok(json && json.token, "Missing token");
+  assert.equal(json?.token, undefined, "Validation must not expose a JWT");
+  assert.ok(json?.csrf_token, "Validation must return a CSRF token");
   assert.equal(json?.user?.username, managedUsers.admin.username);
   assert.deepEqual(json?.user?.roles || [], ["admin"]);
   assert.deepEqual(json?.user?.permissions || [], ["admin_bidding", "live_feed"]);
-  assert.equal(Object.hasOwn(json?.user || {}, "preferences"), false, "Validate should not include preferences");
+  assert.ok(json?.user?.preferences, "Validate should include current preferences");
   assert.equal(json?.landing_path, "/admin/index.html");
-  const payload = decodeJwtPayload(json.token);
+  const payload = decodeJwtPayload(context.token.cookie.split("=")[1]);
   assert.equal(payload.username, managedUsers.admin.username);
   assert.ok(Number.isFinite(payload.session_invalid_before), "Expected session_invalid_before claim");
 });
@@ -948,7 +1011,7 @@ addTest("B-007c","POST /preferences rejects unauthenticated requests", async () 
   await expectStatus(res, 403);
 });
 
-addTest("B-007d","POST /preferences accepts token in request body for beacon-style saves", async () => {
+addTest("B-007d","POST /preferences rejects body-supplied legacy tokens", async () => {
   const requestedPreferences = {
     theme: { mode: "light" },
     cashier: {
@@ -965,22 +1028,12 @@ addTest("B-007d","POST /preferences accepts token in request body for beacon-sty
       preferences: requestedPreferences
     })
   });
-  await expectStatus(res, 200);
-  assert.deepEqual(json?.preferences, requestedPreferences);
-
-  const relogin = await attemptLoginWith(managedUsers.cashier.username, "cashier", managedUsers.cashier.password);
-  await expectStatus(relogin.res, 200);
-  assert.deepEqual(relogin.json?.user?.preferences, requestedPreferences);
+  await expectStatus(res, 403);
+  assert.match(json?.error || "", /access denied/i);
 });
 
 addTest("B-007e","GET /preferences returns saved preferences for authenticated user", async () => {
-  const expectedPreferences = {
-    theme: { mode: "light" },
-    cashier: {
-      selected_auction_id: testData.auctionId,
-      show_pictures: true
-    }
-  };
+  const expectedPreferences = { theme: { mode: "system" } };
 
   const { res, json } = await fetchJson(`${baseUrl}/preferences`, {
     method: "GET",
@@ -1009,8 +1062,7 @@ addTest("B-008","POST /validate failure missing token", async () => {
 addTest("B-009","POST /validate failure invalid token", async () => {
   const { res } = await fetchJson(`${baseUrl}/validate`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token: "invalid.token.value" })
+    headers: { Cookie: "manebid_session=invalid.token.value" }
   });
   await expectStatus(res, 403);
 });
@@ -1018,8 +1070,7 @@ addTest("B-009","POST /validate failure invalid token", async () => {
 addTest("B-010","POST /validate failure malformed token", async () => {
   const { res } = await fetchJson(`${baseUrl}/validate`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token: 1234 })
+    headers: { Cookie: "manebid_session=1234" }
   });
   await expectStatus(res, 403);
 });
@@ -1061,6 +1112,30 @@ addTest("B-015a","POST /auctions/:auctionId/newitem failure invalid photo extens
   await expectStatus(res, 400);
   assert.ok(json && json.error, "Expected invalid image error payload");
 });
+
+addTest("B-015b","oversized item photo is rejected without an orphan file", async () => {
+  const before = await fetchJson(`${baseUrl}/maintenance/orphan-photos`, {
+    headers: authHeaders(tokens.maintenance)
+  });
+  await expectStatus(before.res, 200);
+
+  const form = new FormData();
+  form.append("description", "Oversized upload");
+  form.append("contributor", "Security test");
+  form.append("photo", new Blob([Buffer.alloc((config.ITEM_PHOTO_MAX_BYTES || 10485760) + 1)], { type: "image/jpeg" }), "oversized.jpg");
+  const uploadAttempt = await fetchJson(`${baseUrl}/auctions/${testData.auctionPublicId}/newitem`, {
+    method: "POST",
+    headers: authHeaders(tokens.admin),
+    body: form
+  });
+  await expectStatus(uploadAttempt.res, 413);
+
+  const after = await fetchJson(`${baseUrl}/maintenance/orphan-photos`, {
+    headers: authHeaders(tokens.maintenance)
+  });
+  await expectStatus(after.res, 200);
+  assert.equal(after.json?.count, before.json?.count);
+}, { timeout: 30000 });
 
 addTest("B-016","POST /auctions/:auctionId/newitem failure missing auction_id", async () => {
   const form = new FormData();
@@ -2073,13 +2148,14 @@ addTest("B-060","POST /validate-auction failure unknown short_name", async () =>
   await expectStatus(res, 400);
 });
 
-addTest("B-060b","POST /validate-auction failure bad auth", async () => {
-  const { res } = await fetchJson(`${baseUrl}/validate-auction`, {
+addTest("B-060b","POST /validate-auction ignores legacy auth headers", async () => {
+  const { res, json } = await fetchJson(`${baseUrl}/validate-auction`, {
     method: "POST",
     headers: authHeaders("blah", { "Content-Type": "application/json" }),
     body: JSON.stringify({ short_name: testData.auctionShortName })
   });
-  await expectStatus(res, 403);
+  await expectStatus(res, 200);
+  assert.equal(json?.valid, true);
 });
   
 
@@ -2111,22 +2187,32 @@ addTest("B-061a","POST /validate-auction failure short name OK but auction not i
   }
 });
 
-addTest("B-061b","POST /validate-auction pass auth override", async () => {
-  const { res } = await fetchJson(`${baseUrl}/validate-auction`, {
-    method: "POST",
-    headers: authHeaders(tokens.admin, { "Content-Type": "application/json" }),
-    body: JSON.stringify({ short_name: testData.auctionShortName })
-  });
-  await expectStatus(res, 200);
+addTest("B-061b","POST /validate-auction has no admin state override", async () => {
+  await setAuctionStatus("locked");
+  try {
+    const { res } = await fetchJson(`${baseUrl}/validate-auction`, {
+      method: "POST",
+      headers: authHeaders(tokens.admin, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ short_name: testData.auctionShortName })
+    });
+    await expectStatus(res, 400);
+  } finally {
+    await setAuctionStatus("setup");
+  }
 });
 
-addTest("B-061c","POST /validate-auction failure auth override with cashier token", async () => {
-  const { res } = await fetchJson(`${baseUrl}/validate-auction`, {
-    method: "POST",
-    headers: authHeaders(tokens.cashier, { "Content-Type": "application/json" }),
-    body: JSON.stringify({ short_name: testData.auctionShortName })
-  });
-  await expectStatus(res, 403);
+addTest("B-061c","POST /validate-auction has no cashier state override", async () => {
+  await setAuctionStatus("locked");
+  try {
+    const { res } = await fetchJson(`${baseUrl}/validate-auction`, {
+      method: "POST",
+      headers: authHeaders(tokens.cashier, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ short_name: testData.auctionShortName })
+    });
+    await expectStatus(res, 400);
+  } finally {
+    await setAuctionStatus("setup");
+  }
 });
 
 
@@ -2152,7 +2238,7 @@ addTest("B-062a","POST /list-auctions success live_feed permission only", async 
   assert.ok(Array.isArray(json), "Expected array");
 });
 
-addTest("B-062b","POST /validate refreshes access after maintenance update", async () => {
+addTest("B-062b","access update invalidates the existing session and new login uses current access", async () => {
   const update = await fetchJson(`${baseUrl}/maintenance/users/${encodeURIComponent(managedUsers.liveFeedOnly.username)}/access`, {
     method: "PATCH",
     headers: authHeaders(tokens.bootstrap, { "Content-Type": "application/json" }),
@@ -2162,13 +2248,13 @@ addTest("B-062b","POST /validate refreshes access after maintenance update", asy
 
   const validateUpdated = await fetchJson(`${baseUrl}/validate`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token: tokens.liveFeedOnly })
+    headers: authHeaders(tokens.liveFeedOnly)
   });
-  await expectStatus(validateUpdated.res, 200);
-  assert.deepEqual(validateUpdated.json?.user?.roles || [], ["slideshow"]);
-  assert.deepEqual(validateUpdated.json?.user?.permissions || [], []);
-  assert.equal(validateUpdated.json?.landing_path, "/slideshow/index.html");
+  await expectStatus(validateUpdated.res, 403);
+  assert.equal(validateUpdated.json?.reason, "remote_logout");
+
+  tokens.liveFeedOnly = await loginAs("slideshow", managedUsers.liveFeedOnly.password, managedUsers.liveFeedOnly.username);
+  assert.deepEqual(tokens.liveFeedOnly.data?.user?.roles || [], ["slideshow"]);
 
   const restore = await fetchJson(`${baseUrl}/maintenance/users/${encodeURIComponent(managedUsers.liveFeedOnly.username)}/access`, {
     method: "PATCH",
@@ -2436,12 +2522,29 @@ addTest("B-083a","POST /login lockout after repeated failures", async () => {
   assert.ok(json && typeof json.error === "string" && json.error.includes("Too many failed attempts"), "Expected lockout response");
 });
 
+addTest("B-083b","POST /login applies an IP-wide limit across usernames", async () => {
+  const forwardedIp = "203.0.113.77";
+  const attempts = Number.isFinite(config.LOGIN_IP_LOCKOUT_AFTER) ? config.LOGIN_IP_LOCKOUT_AFTER : 40;
+  for (let i = 0; i < attempts; i += 1) {
+    await fetchJson(`${baseUrl}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Forwarded-For": forwardedIp },
+      body: JSON.stringify({ username: `ip_limit_${i}`, password: "wrong-password" })
+    });
+  }
+  const blocked = await fetchJson(`${baseUrl}/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Forwarded-For": forwardedIp },
+    body: JSON.stringify({ username: managedUsers.cashier.username, password: managedUsers.cashier.password })
+  });
+  await expectStatus(blocked.res, 429);
+}, { timeout: 30000 });
+
 
 addTest("B-084","POST /validate failure unreasonable token length", async () => {
   const { res } = await fetchJson(`${baseUrl}/validate`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token: "x".repeat(10000) })
+    headers: { Cookie: `manebid_session=${"x".repeat(10000)}` }
   });
   await expectStatus(res, 403);
 });
@@ -2475,9 +2578,7 @@ addTest("B-087","POST /maintenance/generate-bids failure missing auction id", as
 });
 
 // /auctions/:auctionId/newitem
-addTest("B-088","POST /auctions/:auctionId/newitem rate limit reset", async () => {
-  await sleep(7000); // Wait to ensure the short test-server rate limit window has passed.
-  
+addTest("B-088","POST /auctions/:auctionId/newitem uses the forwarded client IP quota", async () => {
   await setAuctionStatus("setup");
   const form = new FormData();
   form.append("description", "Backend New Item");
@@ -2485,6 +2586,7 @@ addTest("B-088","POST /auctions/:auctionId/newitem rate limit reset", async () =
   form.append("artist", "Artist New");
   const { res, json } = await fetchJson(`${baseUrl}/auctions/${testData.auctionPublicId}/newitem`, {
     method: "POST",
+    headers: { "X-Forwarded-For": `198.51.100.${Math.floor(Math.random() * 100) + 1}` },
     body: form
   });
   await expectStatus(res, 200);
