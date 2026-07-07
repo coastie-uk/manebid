@@ -134,6 +134,14 @@
   margin: 4px 0 0;
 }
 
+.maintenance-permission-note {
+  background: #fff7e6;
+  border: 1px solid #f0c36d;
+  border-radius: 10px;
+  color: #6b4b00;
+  padding: 10px 12px;
+}
+
 .maintenance-form-grid {
   display: grid;
   gap: 8px;
@@ -1662,6 +1670,12 @@ footer {
 }
 
 :root[data-theme="dark"] .user-access-note {
+  background: #2b2111;
+  border-color: #6b4f1d;
+  color: #f1d28f;
+}
+
+:root[data-theme="dark"] .maintenance-permission-note {
   background: #2b2111;
   border-color: #6b4f1d;
   color: #f1d28f;

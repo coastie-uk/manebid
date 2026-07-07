@@ -46,22 +46,25 @@ More detail:
    - The customer pays using the SumUp-hosted page or SumUp app.
    - SumUp processes the transaction independently.
 
-4. **SumUp calls back to your server**
-   - After payment, SumUp sends server-to-server confirmation back to your server:
-     - A **POST webhook** for web payments
-     - A **GET callback** for app payments
-   - These requests tell the backend whether the payment succeeded or failed.
-   - If a response fails to appear, the backend silently times out the payment intent and the process stops here.
+4. **SumUp notifies your server**
+   - Web payments send a **POST webhook**.
+   - App payments return the browser through a **GET callback**.
+   - Callback parameters are notifications only and are never accepted as proof
+     of payment.
 
 5. **Payment is finalised**
-   - The backend verifies the intent and SumUp transaction.
+   - The backend queries SumUp directly and matches the intent reference,
+     merchant, amount, currency, status, and transaction identifiers.
    - A payment row is created in the database.
    - The bidder’s balance updates automatically.
+   - If direct verification is unavailable, the intent stays pending and no
+     payment is recorded.
 
 > **Important:**  
-> No personal or payment information touches the backend server or any connection we initiate (apart from the 
-> amount and the intent ID which ties it back to the bidder)
-> Payments are not recorded until positive confimation from SumUp
+> ManeBid sends the amount and intent reference to SumUp and retrieves the
+> transaction fields needed for verification. It stores only a minimal
+> verification snapshot and never stores card credentials. Payments are not
+> recorded until SumUp confirms a matching successful transaction.
 
 ---
 
@@ -90,6 +93,10 @@ For app-based checkout you will need:
 For web-based checkout you will need:
 - **API Key**
 - **Merchant Code**
+
+Card-present verification uses the same API key and merchant code. The key must
+include the SumUp OAuth/API scope `transactions.history`, which permits the
+backend to retrieve a transaction by `foreign_transaction_id`.
 
 These values must be kept confidential. Do not share them unncesserially as they allow access into your merchant account
 ---
@@ -125,6 +132,9 @@ SUMUP_CARD_PRESENT_ENABLED=true
 Notes:
 
 - If a payment method is enabled, the related fields must be populated
+- Card-present payments can still open the SumUp app without API credentials,
+  but they remain pending until direct verification is available
+- `SUMUP_API_KEY` requires the `transactions.history` scope for card-present verification
 - All URLs **must be HTTPS**
 - Certificates **must be valid and not expired**
 - These URLs must be reachable from the public internet
@@ -134,12 +144,13 @@ Notes:
 | Variable | Method | Purpose |
 |--------|--------|---------|
 | `SUMUP_RETURN_URL` | POST (*) | Main webhook used by SumUp to confirm payment outcome |
-| `SUMUP_CALLBACK_SUCCESS` | GET | Browser/app redirect after a successful payment |
-| `SUMUP_CALLBACK_FAIL` | GET | Browser/app redirect after a failed payment |
+| `SUMUP_CALLBACK_SUCCESS` | GET | Browser/app notification; the backend independently verifies the transaction |
+| `SUMUP_CALLBACK_FAIL` | GET | Browser/app notification; callback parameters do not change payment state |
 
 (*) For diagnostics, the same endpoint also supports **GET** requests returning a simple status message.
 
-The POST webhook is the most important one for correct payment recording.
+Payment state is always derived from a direct SumUp API lookup, not a callback
+query value.
 
 ---
 

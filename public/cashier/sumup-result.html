@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SumUp Payment | ManeBid</title>
+  <link rel="stylesheet" href="/styles/sumup-result.css">
+  <link rel="icon" type="image/png" href="/images/favicon.png">
+  <script src="/scripts/sumup-result.js" defer></script>
+</head>
+<body>
+  <main class="sumup-result-card">
+    <h1 id="sumup-result-title">SumUp Payment</h1>
+    <p id="sumup-result-message">Checking payment result…</p>
+    <p id="sumup-result-guidance"></p>
+    <button id="sumup-close-button" type="button">Close this tab</button>
+    <p id="sumup-close-fallback" hidden>Your browser blocked automatic closing. Close this tab manually.</p>
+  </main>
+</body>
+</html>

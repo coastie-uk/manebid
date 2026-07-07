@@ -1281,6 +1281,32 @@ form button:hover {
     text-align: right;
 }
 
+.third-party-notices {
+    border: 1px solid #dbe6f5;
+    border-radius: 12px;
+    margin-top: 14px;
+    overflow: hidden;
+}
+
+.third-party-notices summary {
+    background: #f8fbff;
+    color: #24436b;
+    cursor: pointer;
+    font-weight: 700;
+    padding: 11px 12px;
+}
+
+.third-party-notices pre {
+    background: #fff;
+    color: var(--admin-text);
+    font: 0.78rem/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    margin: 0;
+    max-height: 240px;
+    overflow: auto;
+    padding: 12px;
+    white-space: pre-wrap;
+}
+
 .app-modal-card--wide {
     max-width: 760px;
     width: min(100%, 760px);
@@ -2657,6 +2683,7 @@ footer {
 :root[data-theme="dark"] .app-modal-header,
 :root[data-theme="dark"] .item-context-menu-header,
 :root[data-theme="dark"] .about-row,
+:root[data-theme="dark"] .third-party-notices,
 :root[data-theme="dark"] .form-footer,
 :root[data-theme="dark"] .messaging-shell,
 :root[data-theme="dark"] .messaging-users,
@@ -2673,6 +2700,7 @@ footer {
 :root[data-theme="dark"] .move-panel,
 :root[data-theme="dark"] .app-modal-header,
 :root[data-theme="dark"] .about-row,
+:root[data-theme="dark"] .third-party-notices summary,
 :root[data-theme="dark"] .messaging-users,
 :root[data-theme="dark"] .messaging-message-body {
     background: #162234;
@@ -2811,13 +2839,19 @@ footer {
 }
 
 :root[data-theme="dark"] .user-menu-username-row strong,
-:root[data-theme="dark"] .about-row strong {
+:root[data-theme="dark"] .about-row strong,
+:root[data-theme="dark"] .third-party-notices summary {
     color: #dfeaff;
 }
 
 :root[data-theme="dark"] .about-row span,
 :root[data-theme="dark"] .message-banner.info {
     color: var(--admin-muted);
+}
+
+:root[data-theme="dark"] .third-party-notices pre {
+    background: #0b1320;
+    color: #d9e6f8;
 }
 
 :root[data-theme="dark"] .message-banner.success {

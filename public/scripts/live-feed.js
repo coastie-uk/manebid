@@ -65,6 +65,11 @@
   };
 
   const menuGroups = Array.from(document.querySelectorAll('.menu-group'));
+  const SAFE_PHOTO_FILENAME = /^resized_[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.jpg$/i;
+  const safePhotoFilename = value => {
+    const text = String(value ?? '').trim();
+    return SAFE_PHOTO_FILENAME.test(text) ? text : '';
+  };
 
   let authToken = null;
   let auctions = [];
@@ -789,7 +794,8 @@
     visibleItems.forEach(item => {
       const tr = document.createElement('tr');
       tr.className = 'recent-sale-row';
-      if (item.photo) tr.dataset.photoUrl = item.photo;
+      const photo = safePhotoFilename(item.photo);
+      if (photo) tr.dataset.photoUrl = photo;
 
       const description = item.test_item ? `${item.description} [T]` : item.description;
       const price = item.test_bid ? `${money(item.price)} [T]` : money(item.price);
@@ -814,7 +820,8 @@
     visible.forEach(item => {
       const tr = document.createElement('tr');
       tr.className = 'unsold-row';
-      if (item.photo) tr.dataset.photoUrl = item.photo;
+      const photo = safePhotoFilename(item.photo);
+      if (photo) tr.dataset.photoUrl = photo;
 
       const lotCell = document.createElement('td');
       lotCell.textContent = item.lot ?? '';
@@ -981,7 +988,8 @@
       })
       .forEach(item => {
         const tr = document.createElement('tr');
-        if (item.photo) tr.dataset.photoUrl = item.photo;
+        const photo = safePhotoFilename(item.photo);
+        if (photo) tr.dataset.photoUrl = photo;
         if (item.changeType === 'added') tr.classList.add('item-row-added');
         if (item.changeType === 'retracted') tr.classList.add('item-row-retracted');
         if (item.collected_at) tr.classList.add('item-row-collected');
@@ -1030,17 +1038,23 @@
     tableWrap.appendChild(table);
     group.appendChild(tableWrap);
 
-    const pictureItems = liveItems.filter(item => item.photo);
+    const pictureItems = liveItems.filter(item => safePhotoFilename(item.photo));
     if (showPictures && pictureItems.length) {
       const previewStrip = document.createElement('div');
       previewStrip.className = 'bucket-preview-strip';
 
       pictureItems.slice(0, 8).forEach(item => {
+        const photo = safePhotoFilename(item.photo);
+        if (!photo) return;
         const figure = document.createElement('figure');
         figure.className = 'bucket-preview-thumb';
-        figure.innerHTML = `
-          <img src="${API_ROOT}/uploads/preview_${item.photo}" alt="Lot ${item.lot} preview" loading="lazy">
-          <figcaption>Lot ${item.lot}</figcaption>`;
+        const img = document.createElement('img');
+        img.src = `${API_ROOT}/uploads/preview_${photo}`;
+        img.alt = `Lot ${item.lot ?? ''} preview`;
+        img.loading = 'lazy';
+        const caption = document.createElement('figcaption');
+        caption.textContent = `Lot ${item.lot ?? ''}`;
+        figure.append(img, caption);
         previewStrip.appendChild(figure);
       });
 

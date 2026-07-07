@@ -77,6 +77,7 @@ const createBackupLog = document.getElementById("create-backup-log");
 const refreshBackupsButton = document.getElementById("refresh-backups");
 const backupTotalSize = document.getElementById("backup-total-size");
 const backupTableBody = document.getElementById("backup-table-body");
+const backupRestorePermissionNote = document.getElementById("backup-restore-permission-note");
 const refreshMessagingStatsButton = document.getElementById("refresh-messaging-stats");
 const exportMessagingCacheButton = document.getElementById("export-messaging-cache");
 const clearMessagingCacheButton = document.getElementById("clear-messaging-cache");
@@ -253,6 +254,10 @@ function canManageUsers(user = currentMaintenanceUser) {
     return window.AppAuth.canAccess(user, { permission: "manage_users" });
   }
   return Array.isArray(user?.permissions) && user.permissions.includes("manage_users");
+}
+
+function canRestoreDatabase(user = currentMaintenanceUser) {
+  return hasPermission(user, "restore_database");
 }
 
 function hasRole(user, role) {
@@ -721,36 +726,43 @@ function createAuctionActionButton(icon, title, onClick, { danger = false, disab
 
 function updateBackupActionState() {
   const hasSelection = Boolean(selectedBackupDetail?.backup_id);
+  const restoreAllowed = canRestoreDatabase();
   const componentManifest = selectedBackupDetail?.component_manifest || {};
   const canRestoreDb = Boolean(componentManifest.database?.included);
   const canRestorePhotos = Boolean(componentManifest.photos?.included);
   const canRestoreResources = Boolean(componentManifest.resources?.included);
 
   if (backupRestoreDb) {
-    backupRestoreDb.disabled = backupOperationBusy || !canRestoreDb;
+    backupRestoreDb.disabled = backupOperationBusy || !restoreAllowed || !canRestoreDb;
     if (!canRestoreDb) backupRestoreDb.checked = false;
   }
   if (backupRestorePhotos) {
-    backupRestorePhotos.disabled = backupOperationBusy || !canRestorePhotos;
+    backupRestorePhotos.disabled = backupOperationBusy || !restoreAllowed || !canRestorePhotos;
     if (!canRestorePhotos) backupRestorePhotos.checked = false;
   }
   if (backupRestoreResources) {
-    backupRestoreResources.disabled = backupOperationBusy || !canRestoreResources;
+    backupRestoreResources.disabled = backupOperationBusy || !restoreAllowed || !canRestoreResources;
     if (!canRestoreResources) backupRestoreResources.checked = false;
   }
 
+  if (backupRestorePermissionNote) backupRestorePermissionNote.hidden = restoreAllowed;
   if (refreshBackupsButton) refreshBackupsButton.disabled = backupOperationBusy;
   if (backupNoteInput) backupNoteInput.disabled = backupOperationBusy;
   document.getElementById("backup-db").disabled = backupOperationBusy;
   if (openCreateBackupModalButton) openCreateBackupModalButton.disabled = backupOperationBusy;
-  if (openImportBackupModalButton) openImportBackupModalButton.disabled = backupOperationBusy;
-  if (importBackupFileInput) importBackupFileInput.disabled = backupOperationBusy;
-  if (inspectImportedBackupButton) inspectImportedBackupButton.disabled = backupOperationBusy;
+  if (openImportBackupModalButton) {
+    openImportBackupModalButton.hidden = !restoreAllowed;
+    openImportBackupModalButton.disabled = backupOperationBusy || !restoreAllowed;
+  }
+  if (importBackupFileInput) importBackupFileInput.disabled = backupOperationBusy || !restoreAllowed;
+  if (inspectImportedBackupButton) inspectImportedBackupButton.disabled = backupOperationBusy || !restoreAllowed;
   if (confirmImportBackupButton) {
     const canConfirmImport = Boolean(pendingBackupImport?.import_token) && pendingBackupImport?.can_import;
-    confirmImportBackupButton.disabled = backupOperationBusy || !canConfirmImport;
+    confirmImportBackupButton.disabled = backupOperationBusy || !restoreAllowed || !canConfirmImport;
   }
-  if (restoreSelectedBackupButton) restoreSelectedBackupButton.disabled = backupOperationBusy || !hasSelection;
+  if (restoreSelectedBackupButton) {
+    restoreSelectedBackupButton.disabled = backupOperationBusy || !restoreAllowed || !hasSelection;
+  }
   if (saveRestoreLogButton) saveRestoreLogButton.disabled = !lastManagedRestoreLog;
 }
 
@@ -791,10 +803,10 @@ function renderBackupTable() {
     actionWrap.className = "backup-action-row";
     actionWrap.appendChild(createBackupActionButton(BACKUP_ACTION_ICONS.restore, "Restore backup", () => {
       void openBackupRestoreModal(backup.backup_id);
-    }, { disabled: backupOperationBusy }));
+    }, { disabled: backupOperationBusy || !canRestoreDatabase() }));
     actionWrap.appendChild(createBackupActionButton(BACKUP_ACTION_ICONS.download, "Download archive", () => {
       void downloadManagedBackupById(backup.backup_id);
-    }, { disabled: backupOperationBusy }));
+    }, { disabled: backupOperationBusy || !canRestoreDatabase() }));
     actionWrap.appendChild(createBackupActionButton(BACKUP_ACTION_ICONS.delete, "Delete backup", () => {
       void deleteManagedBackupById(backup.backup_id);
     }, { danger: true, disabled: backupOperationBusy }));
@@ -956,6 +968,10 @@ async function openBackupInfoModal(backupId) {
 }
 
 async function openBackupRestoreModal(backupId) {
+  if (!canRestoreDatabase()) {
+    showMessage("Restore Database permission is required.", "error");
+    return;
+  }
   await selectManagedBackup(backupId);
   if (!selectedBackupDetail) return;
 
@@ -1870,6 +1886,7 @@ function bindMaintenanceShell() {
   });
 
   openImportBackupModalButton?.addEventListener("click", () => {
+    if (!canRestoreDatabase()) return;
     resetImportBackupPreview();
     openModal(importBackupModal);
     importBackupFileInput?.focus();
@@ -2076,6 +2093,7 @@ async function checkToken() {
     currentMaintenanceUser = session.user;
     setMaintenanceUserMenu(currentUsername);
     applyUserManagementAccess(session.user);
+    updateBackupActionState();
     loginSection.style.display = "none";
     maintenanceSection.style.display = "grid";
     refreshAuctions();
@@ -2143,6 +2161,10 @@ document.getElementById("backup-db").onclick = async () => {
 };
 
 inspectImportedBackupButton?.addEventListener("click", async () => {
+  if (!canRestoreDatabase()) {
+    showMessage("Restore Database permission is required.", "error");
+    return;
+  }
   if (!importBackupFileInput?.files?.length) {
     showMessage("Select a backup zip to inspect.", "info");
     return;
@@ -2220,6 +2242,10 @@ inspectImportedBackupButton?.addEventListener("click", async () => {
 });
 
 confirmImportBackupButton?.addEventListener("click", async () => {
+  if (!canRestoreDatabase()) {
+    showMessage("Restore Database permission is required.", "error");
+    return;
+  }
   if (!pendingBackupImport?.import_token || !pendingBackupImport?.can_import) {
     showMessage("Inspect a valid backup archive before importing.", "info");
     return;
@@ -2279,6 +2305,10 @@ refreshBackupsButton?.addEventListener("click", () => {
 });
 
 async function downloadManagedBackupById(backupId) {
+  if (!canRestoreDatabase()) {
+    showMessage("Restore Database permission is required.", "error");
+    return;
+  }
   await selectManagedBackup(backupId, { silent: true });
   if (!selectedBackupDetail?.backup_id) {
     showMessage("Backup details are unavailable.", "error");
@@ -2379,6 +2409,10 @@ async function deleteManagedBackupById(backupId) {
 }
 
 restoreSelectedBackupButton?.addEventListener("click", async () => {
+  if (!canRestoreDatabase()) {
+    showMessage("Restore Database permission is required.", "error");
+    return;
+  }
   if (!selectedBackupDetail?.backup_id) {
     showMessage("Select a backup first.", "info");
     return;
@@ -2600,10 +2634,11 @@ function renderLogs(target, rawText) {
 }
 
 const USER_ROLE_ORDER = ["admin", "cashier", "maintenance", "slideshow"];
-const USER_PERMISSION_ORDER = ["live_feed", "admin_bidding", "manage_users"];
+const USER_PERMISSION_ORDER = ["live_feed", "admin_bidding", "manage_users", "restore_database"];
 const ACCESS_DEPENDENCIES = [
   { permission: "admin_bidding", role: "admin" },
-  { permission: "manage_users", role: "maintenance" }
+  { permission: "manage_users", role: "maintenance" },
+  { permission: "restore_database", role: "maintenance" }
 ];
 const USER_ACTION_ICONS = Object.freeze({
   edit: `
@@ -2967,7 +3002,7 @@ async function loadUsers() {
   if (users.length === 0) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 9;
+    td.colSpan = 10;
     td.textContent = "No users found.";
     tr.appendChild(td);
     tableBody.appendChild(tr);
@@ -3104,6 +3139,7 @@ window.addEventListener(window.AppAuth?.SESSION_EVENT || "appauth:session", (eve
   currentUsername = session?.user?.username || currentUsername;
   setMaintenanceUserMenu(currentUsername);
   applyUserManagementAccess(currentMaintenanceUser);
+  updateBackupActionState();
   document.querySelectorAll('input[name="new-user-role"]').forEach((input) => {
     input.dataset.actorCanGrant = canGrantRole(input.value, currentMaintenanceUser) ? "true" : "false";
   });

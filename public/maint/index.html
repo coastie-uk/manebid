@@ -2,7 +2,7 @@
 <html lang="en" data-view-key="maintenance" data-access-role="maintenance" data-message-poll-ms="30000" data-message-item-references="false">
 <head>
   <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Manage Auctions | ManeBid — Convention Auction Manager</title>
   <script src="/scripts/page-bootstrap.js"></script>
@@ -147,6 +147,10 @@
               </div>
             </div>
             <div class="panel-body maintenance-tab-body">
+              <div id="backup-restore-permission-note" class="maintenance-permission-note" hidden>
+                You do not have Restore Database permission, so backup import, download, and restore actions are unavailable.
+              </div>
+
               <section class="maintenance-subpanel">
                 <div class="maintenance-subpanel-head">
                   <div>
@@ -362,6 +366,7 @@
                         <th>Manage Collections</th>
                         <th>Manage Bids</th>
                         <th>Manage Users</th>
+                        <th>Restore Database</th>
                         <th>Actions</th>
                       </tr>
                     </thead>
@@ -706,6 +711,10 @@
             <div class="about-row"><span>Backend uptime</span><strong id="about-backend-uptime">Unknown</strong></div>
           </div>
           <p class="about-license">Copyright © 2026 Chris Staples. This program is free software, licensed under the GNU General Public License, version 3. Distributed without any warranty.</p>
+          <details class="third-party-notices">
+            <summary>Third-party notices</summary>
+            <pre data-third-party-notices>Loading third-party notices...</pre>
+          </details>
         </div>
       </div>
 
@@ -918,12 +927,19 @@
                 </span>
                 <span class="user-access-description">Use the maintenance console for setup, templates, backups, diagnostics, and system tasks.</span>
               </label>
-                            <label class="user-access-item user-access-item--permission">
+              <label class="user-access-item user-access-item--permission">
                 <span class="user-access-toggle">
                   <input type="checkbox" id="new-user-manage-users" name="new-user-permission" value="manage_users" />
                   <span>Manage Users</span>
                 </span>
                 <span class="user-access-description">Depends on <strong>Manage Auctions</strong>; allows account creation, password resets, and access changes.</span>
+              </label>
+              <label class="user-access-item user-access-item--permission">
+                <span class="user-access-toggle">
+                  <input type="checkbox" id="new-user-restore-database" name="new-user-permission" value="restore_database" />
+                  <span>Restore Database</span>
+                </span>
+                <span class="user-access-description">Depends on <strong>Manage Auctions</strong>; allows backup upload, download, and restore.</span>
               </label>
                             <label class="user-access-item">
                 <span class="user-access-toggle">
@@ -1016,6 +1032,13 @@
                   <span>Manage Users</span>
                 </span>
                 <span class="user-access-description">Depends on <strong>Manage Auctions</strong>; allows account creation, password resets, and access changes.</span>
+              </label>
+              <label class="user-access-item user-access-item--permission">
+                <span class="user-access-toggle">
+                  <input type="checkbox" id="edit-user-restore-database" name="edit-user-permission" value="restore_database" />
+                  <span>Restore Database</span>
+                </span>
+                <span class="user-access-description">Depends on <strong>Manage Auctions</strong>; allows backup upload, download, and restore.</span>
               </label>
               <label class="user-access-item">
                 <span class="user-access-toggle">

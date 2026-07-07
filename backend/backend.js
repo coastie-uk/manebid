@@ -1029,10 +1029,18 @@ try {
         let textFieldsChanged = false;
         // For each field, check if it's provided and different from current value. If so, add to updates (minimize DB writes)
         const fields = ["description", "contributor", "artist", "notes"];
+        const fieldMaxLengths = {
+            description: 1024,
+            contributor: 512,
+            artist: 512,
+            notes: 1024
+        };
         fields.forEach(field => {
-            if (req.body[field] !== undefined && req.body[field] !== null && req.body[field] !== row[field]) {
+            if (req.body[field] !== undefined && req.body[field] !== null) {
+                const sanitisedValue = sanitiseText(req.body[field], fieldMaxLengths[field]);
+                if (sanitisedValue === row[field]) return;
                 updates.push(`${field} = ?`);
-                params.push(req.body[field]);
+                params.push(sanitisedValue);
                 textFieldsChanged = true;
             }
         });

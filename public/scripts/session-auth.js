@@ -18,7 +18,8 @@
     live_feed: "Manage Collections",
     admin_bidding: "Manage Bids",
     slideshow: "Slideshow",
-    manage_users: "Manage Users"
+    manage_users: "Manage Users",
+    restore_database: "Restore Database"
   });
   const ACCESS_ORDER = Object.freeze([
     "admin",
@@ -27,6 +28,7 @@
     "live_feed",
     "admin_bidding",
     "manage_users",
+    "restore_database",
     "slideshow"
   ]);
   const VIEWS = Object.freeze([

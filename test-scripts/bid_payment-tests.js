@@ -1683,13 +1683,32 @@ addTest("P-054c","GET /payments/intents/:id success hosted intent", async () => 
   assert.equal(json.status, "pending");
 });
 
-addTest("P-054d","GET /payments/sumup/callback/fail marks hosted intent failed", async () => {
+addTest("P-054d","public SumUp callback cannot fail or finalize an intent without provider verification", async () => {
   if (!testData.sumupHostedIntentId) {
     return skipTest("No hosted SumUp intent available.");
   }
-  const res = await fetch(`${baseUrl}/payments/sumup/callback/fail?status=failed&foreign-tx-id=${testData.sumupHostedIntentId}`);
-  await expectStatus(res, 200);
-  await waitForIntentStatus(testData.sumupHostedIntentId, "failed", 3000);
+  const res = await fetch(
+    `${baseUrl}/payments/sumup/callback/fail?status=failed&foreign-tx-id=${testData.sumupHostedIntentId}`,
+    { redirect: "manual" }
+  );
+  await expectStatus(res, 303);
+  assert.equal(res.headers.get("location"), "/cashier/sumup-result.html?status=unknown");
+  const intent = await fetchJson(`${baseUrl}/payments/intents/${testData.sumupHostedIntentId}`, {
+    headers: authHeaders(context.token)
+  });
+  await expectStatus(intent.res, 200);
+  assert.equal(intent.json.status, "pending");
+});
+
+addTest("P-054e","SumUp callback normalizes malicious status text", async () => {
+  const payload = encodeURIComponent(`success</strong><script src="https://cdn.jsdelivr.net/npm/x"></script>`);
+  const res = await fetch(
+    `${baseUrl}/payments/sumup/callback/success?status=${payload}&foreign-tx-id=invalid`,
+    { redirect: "manual" }
+  );
+  await expectStatus(res, 303);
+  assert.equal(res.headers.get("location"), "/cashier/sumup-result.html?status=unknown");
+  assert.doesNotMatch(res.headers.get("location") || "", /script|jsdelivr/i);
 });
 
 
@@ -1801,6 +1820,17 @@ addTest("P-060","GET /payments/intents/:id success", async () => {
   assert.equal(json.status, "pending");
 });
 
+addTest("P-060a","POST /payments/intents/:id/verify requires CSRF", async () => {
+  if (!testData.sumupIntentId) {
+    return skipTest("No SumUp intent available.");
+  }
+  const res = await fetch(`${baseUrl}/payments/intents/${testData.sumupIntentId}/verify`, {
+    method: "POST",
+    headers: { Cookie: context.token.cookie }
+  });
+  await expectStatus(res, 403);
+});
+
 addTest("P-061","GET /payments/intents/:id failure not found", async () => {
   const { res } = await fetchJson(`${baseUrl}/payments/intents/00000000-0000-0000-0000-000000000000`, {
     headers: authHeaders(context.token)
@@ -1845,7 +1875,7 @@ addTest("P-065","GET /payments/sumup/callback/success missing foreign id no paym
 
 
 
-addTest("P-066","GET /payments/sumup/callback/fail updates intent", async () => {
+addTest("P-066","GET /payments/sumup/callback/fail leaves intent pending without provider confirmation", async () => {
   await setAuctionStatusFor(testData.sumupAuctionId, "settlement");
   const amountMinor = Math.min(testData.sumupOutstandingMinor, 1000);
   if (amountMinor < 1) {
@@ -1866,14 +1896,17 @@ addTest("P-066","GET /payments/sumup/callback/fail updates intent", async () => 
   testData.sumupFailIntentId = create.json.intent_id;
   const before = await getBidderSummary(testData.sumupAuctionId, testData.sumupBidderId);
 
-  const res = await fetch(`${baseUrl}/payments/sumup/callback/fail?status=failed&foreign-tx-id=${testData.sumupFailIntentId}`);
-  await expectStatus(res, 200);
+  const res = await fetch(
+    `${baseUrl}/payments/sumup/callback/fail?status=failed&foreign-tx-id=${testData.sumupFailIntentId}`,
+    { redirect: "manual" }
+  );
+  await expectStatus(res, 303);
 
   const check = await fetchJson(`${baseUrl}/payments/intents/${testData.sumupFailIntentId}`, {
     headers: authHeaders(context.token)
   });
   await expectStatus(check.res, 200);
-  assert.equal(check.json.status, "failed");
+  assert.equal(check.json.status, "pending");
   const after = await getBidderSummary(testData.sumupAuctionId, testData.sumupBidderId);
   assert.equal(after.payments_total, before.payments_total);
 });
@@ -1886,21 +1919,23 @@ addTest("P-067","GET /payments/sumup/callback/success unknown foreign id no paym
   assert.equal(after.payments_total, before.payments_total);
 });
 
-addTest("P-068","GET /payments/sumup/callback/success finalizes intent", async () => {
+addTest("P-068","GET /payments/sumup/callback/success cannot finalize without provider confirmation", async () => {
   if (!testData.sumupIntentId) {
     return skipTest("No SumUp intent available.");
   }
-  const res = await fetch(`${baseUrl}/payments/sumup/callback/success?status=success&foreign-tx-id=${testData.sumupIntentId}`);
-  await expectStatus(res, 200);
-
-  await waitForIntentStatus(testData.sumupIntentId, "succeeded", 3000);
-  const bidder = await fetchJson(`${baseUrl}/settlement/bidders/${testData.sumupBidderId}?auction_id=${testData.sumupAuctionId}`, {
+  const before = await getBidderSummary(testData.sumupAuctionId, testData.sumupBidderId);
+  const res = await fetch(
+    `${baseUrl}/payments/sumup/callback/success?status=success&foreign-tx-id=${testData.sumupIntentId}`,
+    { redirect: "manual" }
+  );
+  await expectStatus(res, 303);
+  const check = await fetchJson(`${baseUrl}/payments/intents/${testData.sumupIntentId}`, {
     headers: authHeaders(context.token)
   });
-  await expectStatus(bidder.res, 200);
-  const expectedPayments = Number((testData.sumupStartingPaymentsTotal + testData.sumupAmountMinor / 100).toFixed(2));
-  assert.ok(Math.abs(bidder.json.payments_total - expectedPayments) < 0.01, "Payments total did not include SumUp payment");
-  testData.sumupPaymentsAfterSuccess = bidder.json.payments_total;
+  assert.equal(check.json.status, "pending");
+  const after = await getBidderSummary(testData.sumupAuctionId, testData.sumupBidderId);
+  assert.equal(after.payments_total, before.payments_total);
+  testData.sumupPaymentsAfterSuccess = before.payments_total;
 });
 
 addTest("P-069","GET /payments/sumup/callback/success duplicate no payment", async () => {
@@ -1912,7 +1947,7 @@ addTest("P-069","GET /payments/sumup/callback/success duplicate no payment", asy
   assert.equal(after.payments_total, testData.sumupPaymentsAfterSuccess);
 });
 
-addTest("P-069a","GET /payments/sumup/callback/success finalizes full-balance payment with donation", async () => {
+addTest("P-069a","GET /payments/sumup/callback/success cannot finalize donation without provider confirmation", async () => {
   const before = await getBidderSummary(testData.sumupAuctionId, testData.sumupBidderId);
   const outstandingMinor = Math.max(0, Math.round((before.balance || 0) * 100));
   if (outstandingMinor < 1) {
@@ -1934,18 +1969,20 @@ addTest("P-069a","GET /payments/sumup/callback/success finalizes full-balance pa
   await expectStatus(create.res, 201);
   assert.equal(create.json?.donation_minor, 250);
 
-  const callback = await fetch(`${baseUrl}/payments/sumup/callback/success?status=success&foreign-tx-id=${create.json.intent_id}`);
-  await expectStatus(callback, 200);
-  await waitForIntentStatus(create.json.intent_id, "succeeded", 3000);
+  const callback = await fetch(
+    `${baseUrl}/payments/sumup/callback/success?status=success&foreign-tx-id=${create.json.intent_id}`,
+    { redirect: "manual" }
+  );
+  await expectStatus(callback, 303);
+  const intent = await fetchJson(`${baseUrl}/payments/intents/${create.json.intent_id}`, {
+    headers: authHeaders(context.token)
+  });
+  assert.equal(intent.json.status, "pending");
 
   const after = await getBidderSummary(testData.sumupAuctionId, testData.sumupBidderId);
-  assert.equal(after.balance, 0);
-  assert.ok(Math.abs(Number(after.payments_total) - Number(before.lots_total)) < 0.01, "SumUp full-balance payment did not settle lots");
-  assert.ok(Math.abs(Number(after.donations_total) - (Number(before.donations_total || 0) + 2.5)) < 0.01, "SumUp donation total did not update");
-  const latestPayment = after.payments[after.payments.length - 1];
-  assert.ok(latestPayment, "Expected latest SumUp payment");
-  assert.ok(Math.abs(Number(latestPayment.amount) - ((outstandingMinor + 250) / 100)) < 0.01, "SumUp gross payment amount mismatch");
-  assert.ok(Math.abs(Number(latestPayment.donation_amount) - 2.5) < 0.01, "SumUp payment donation amount mismatch");
+  assert.equal(after.balance, before.balance);
+  assert.equal(after.payments_total, before.payments_total);
+  assert.equal(after.donations_total, before.donations_total);
 });
 
 run().catch(err => {

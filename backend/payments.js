@@ -5,11 +5,11 @@
  * @license     GPL3
  */
 
-const paymentProcessorVer = 'SumUp 1.2.0(2026-02-09)';
+const paymentProcessorVer = 'SumUp 1.3.0(2026-07-05)';
 
 const express = require('express');
-const crypto = require('node:crypto');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
+const { v4: uuidv4, validate: uuidValidate } = require('uuid');
 const db = require('./db');
 const { logLevels, logFromRequest, log } = require('./logger');
 const { request } = require('undici');
@@ -32,11 +32,26 @@ const {
 
 const toPounds = (minor) => (minor / 100).toFixed(2);
 const {audit, recomputeBalanceAndAudit } = require('./middleware/audit');
-const { channel } = require('node:diagnostics_channel');
 const { getBidderPaymentTotals } = require('./payment-utils');
 const { getAuditActor } = require('./users');
+const {
+  appTransactionMismatches,
+  evaluateAppTransaction
+} = require('./sumup-verification');
+const { getTransactionByForeignReference: fetchTransactionByForeignReference } = require('./sumup-client');
 const api = express.Router();
 api.use(express.json());
+const SUMUP_RESULT_PATH = '/cashier/sumup-result.html';
+const APP_CALLBACK_STATUSES = new Set(['success', 'failed', 'invalidstate']);
+const appVerificationInFlight = new Map();
+
+function paymentLogRef(value) {
+  return crypto
+    .createHash('sha256')
+    .update(String(value || ''))
+    .digest('hex')
+    .slice(0, 12);
+}
 
 const posInt = (x) => Number.isInteger(x) && x > 0;
 
@@ -154,7 +169,7 @@ if (channel !== 'hosted' && channel !== 'app') {
       }
     }
 
-    logFromRequest(req, logLevels.INFO, `Intent created ${intentId} bidder=${bidder_id} gross_minor=${gross_minor} donation_minor=${donation_minor} channel=${channel}`);
+    logFromRequest(req, logLevels.INFO, `Intent created ref=${paymentLogRef(intentId)} bidder=${bidder_id} gross_minor=${gross_minor} donation_minor=${donation_minor} channel=${channel}`);
     res.status(201).json(payload);
   } catch (err) {
     logFromRequest(req, logLevels.ERROR, `intent_create_error ${err.message}`);
@@ -162,12 +177,27 @@ if (channel !== 'hosted' && channel !== 'app') {
   }
 });
 
+function getPublicIntent(intentId) {
+  const row = db.prepare(`
+    SELECT intent_id, bidder_id, amount_minor, donation_minor, currency, status, channel, expires_at
+    FROM payment_intents WHERE intent_id=?
+  `).get(intentId);
+  if (!row) return null;
+  return {
+    ...row,
+    verification_state: row.channel === 'app'
+      && row.status === 'pending'
+      && (!SUMUP_API_KEY || !SUMUP_MERCHANT_CODE)
+      ? 'unavailable'
+      : row.status
+  };
+}
+
 // --- Poll status (UI fallback while waiting) ---
 api.get('/payments/intents/:id', authenticateRole("cashier"), (req, res) => {
   try {
-    const row = db.prepare(`
-      SELECT intent_id, bidder_id, amount_minor, donation_minor, currency, status, channel, sumup_checkout_id, expires_at
-      FROM payment_intents WHERE intent_id=?`).get(req.params.id);
+    if (!uuidValidate(req.params.id)) return res.status(400).json({ error: 'invalid_intent_id' });
+    const row = getPublicIntent(req.params.id);
     if (!row) return res.status(400).json({ error: 'not_found' });
     res.json(row);
   } catch (err) {
@@ -177,13 +207,28 @@ api.get('/payments/intents/:id', authenticateRole("cashier"), (req, res) => {
   }
 });
 
+api.post('/payments/intents/:id/verify', authenticateRole("cashier"), async (req, res) => {
+  try {
+    if (!uuidValidate(req.params.id)) return res.status(400).json({ error: 'invalid_intent_id' });
+    const current = getPublicIntent(req.params.id);
+    if (!current) return res.status(400).json({ error: 'not_found' });
+    const verification = await verifyAndFinalizeIntent(req.params.id, { source: 'cashier-poll' });
+    return res.json({
+      ...getPublicIntent(req.params.id),
+      verification_state: verification?.verification_state || current.verification_state
+    });
+  } catch (err) {
+    logFromRequest(req, logLevels.ERROR, `intent_verify_error ${err.message}`);
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
+
 // --- Test webhook endpoint (GET) ---
 // For testing webhook reachability from SumUp dashboard
 // Not used in production flow.
-api.get('/payments/sumup/webhook', async (req, res) => {
-  logFromRequest(req, logLevels.INFO, `Sumup web test webhook received ${JSON.stringify(req.query)}`);
-  res.type('html').send(generateTestPage('Web', req));
-    return;
+api.get('/payments/sumup/webhook', (req, res) => {
+  logFromRequest(req, logLevels.INFO, 'SumUp web callback reachability test received');
+  return res.redirect(303, `${SUMUP_RESULT_PATH}?mode=test&type=web`);
 });
 
 // --- Webhook for hosted checkouts ---
@@ -192,8 +237,7 @@ api.get('/payments/sumup/webhook', async (req, res) => {
 // See: https://developer.sumup.com/docs/hosted-checkout/webhooks/
 
 api.post('/payments/sumup/webhook', async (req, res) => {
-  logFromRequest(req, logLevels.DEBUG, `Sumup webhook received ${JSON.stringify(req.body)}`);
-  
+  logFromRequest(req, logLevels.DEBUG, `SumUp webhook received checkout_id_present=${Boolean(req.body?.id)}`);
 
   try {
     // Minimal shape (hosted): { id: "<checkout_id>", ... }
@@ -207,7 +251,7 @@ api.post('/payments/sumup/webhook', async (req, res) => {
     // Link back to our intent via stored checkout id
     const row = db.prepare('SELECT intent_id FROM payment_intents WHERE sumup_checkout_id=?').get(checkoutId);
     if (!row?.intent_id) {
-      logFromRequest(req, logLevels.WARN, `webhook_unlinked_checkout id=${checkoutId}`);
+      logFromRequest(req, logLevels.WARN, `webhook_unlinked_checkout checkout_ref=${paymentLogRef(checkoutId)}`);
       return;
     }
     await verifyAndFinalizeIntent(row.intent_id, { raw: req.body, source: 'webhook' });
@@ -216,42 +260,6 @@ api.post('/payments/sumup/webhook', async (req, res) => {
   }
 });
 
-function generateTestPage(type, req) {
-const time = new Date().toISOString();
- const ip = (
-    req.headers['x-forwarded-for']?.split(',')[0]?.trim() || // if behind proxy
-    req.socket?.remoteAddress ||
-    req.connection?.remoteAddress ||
-    'unknown'
-  );
-
-  return `
-<!DOCTYPE html> <html lang="en"> <head> <meta charset="UTF-8"> <title>SumUp ${type} Payment Callback Test</title> </head>
-  <style>
-    body {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      margin: 0;
-      padding: 2rem;
-      background: #f5f5f5;
-      color: #222;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      box-sizing: border-box;
-      text-align: center;
-    }
-      </style>
-<body> <h1>SumUp ${type} Payment Callback Test</h1>
-  <p>The endpoint URL configured on the backend is reachable from this browser. Received at ${time} from IP ${ip}. This <i>suggests</i> that the endpoint is configured correctly.</p>
-  <p>As a reminder, the endpoint MUST be reachable from the public internet over HTTPS using valid TLS certs (not self-signed).</p>
-  <p>To now test the full payment flow, please initiate a payment via the front-end UI.</p> </body> </html>
-`;  
-
-}
-
-
 // API for handling both success and fail callbacks from SumUp app deep-link UX
 // Testing indicates that SumUp will sometimes call the success endpoint under failure conditions (!!), so we treat them the same and interpret the status param.
 // MUST be reachable from the public internet over HTTPS using valid TLS certs (not self-signed).
@@ -259,270 +267,203 @@ const time = new Date().toISOString();
 api.get('/payments/sumup/callback/success', handleSumupAppCallback);
 api.get('/payments/sumup/callback/fail', handleSumupAppCallback);
 
-function handleSumupAppCallback(req, res) {
-  var status = readStatus(req.query);          // 'success' | 'failed' | 'invalidstate' | ''
+async function handleSumupAppCallback(req, res) {
+  const callbackStatus = readStatus(req.query);
   const foreignTxId = readForeignTxId(req.query);
   const txCode = readTxCode(req.query);
-  const failure = readFailureInfo(req.query);
-
-  // If everything is null, assume it's a simple reachability test and respond accordingly
-if (!foreignTxId && !txCode && !failure.cause && !failure.message) {
-    logFromRequest(req, logLevels.INFO, `Sumup app test webhook received ${JSON.stringify(req.query)}`);
-  res.type('html').send(generateTestPage('App', req));
-    return;
-}
-
-  logFromRequest(req, logLevels.INFO,
-    `sumup_app_callback endpoint=${req.path} status=${status} foreign_tx=${foreignTxId} tx_code=${txCode} failure=${JSON.stringify(failure)}`);
-
-  // Test point: force success even if SumUp says otherwise (e.g. if transaction cancelled on POS)
-  // status = `success`;
-
-  // Without a foreign tx ID we can't do anything
-  if (!foreignTxId) {
-    logFromRequest(req, logLevels.WARN,
-      `SumUp app callback missing foreign tx ID. Aborting processing.`);
-      res.status(400).json({ error: 'missing transaction ID' });
-    return;
-      
-  } else if (status === 'success') {
-    // Happy path: fire-and-forget verification/finalisation
-    verifyAndFinalizeIntent(foreignTxId, {
-      raw: req.query,
-      source: 'app-callback'
-    }).catch(err => {
-      logFromRequest(req, logLevels.ERROR,
-        `SumUp app callback verify error intent=${foreignTxId} err=${err.message}`);
-    });
-  } else if (status) {
-    // Any non-success status: mark intent as failed (if still pending)
-    db.prepare(`
-      UPDATE payment_intents
-      SET status = 'failed'
-      WHERE intent_id = ? AND status = 'pending'
-    `).run(foreignTxId);
-
-    logFromRequest(req, logLevels.INFO,
-      `SumUp app callback mark failed intent=${foreignTxId} status=${status} cause=${failure.cause || ''} msg=${failure.message || ''}`);
+  if (!foreignTxId && !txCode) {
+    logFromRequest(req, logLevels.INFO, 'SumUp app callback reachability test received');
+    return res.redirect(303, `${SUMUP_RESULT_PATH}?mode=test&type=app`);
   }
 
-  // Opens a simple page that attempts to close itself after showing status
-  // Auto-close is typically blocked by modern browser but it *should* work here as the window was opened by window.open from our front-end.
+  if (!foreignTxId || !uuidValidate(foreignTxId)) {
+    logFromRequest(req, logLevels.WARN, 'SumUp app callback rejected: missing or invalid foreign transaction ID');
+    return res.redirect(303, `${SUMUP_RESULT_PATH}?status=unknown`);
+  }
 
-  res.type('html').send(`
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Closing…</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      margin: 0;
-      padding: 2rem;
-      background: #f5f5f5;
-      color: #222;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      box-sizing: border-box;
-      text-align: center;
-    }
-
-    .box {
-      background: #fff;
-      border-radius: 8px;
-      padding: 1.5rem 2rem;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-      max-width: 420px;
-      width: 100%;
-    }
-
-    h1 {
-      margin-top: 0;
-      margin-bottom: 0.5rem;
-      font-size: 1.4rem;
-    }
-
-    p {
-      margin: 0.4rem 0;
-    }
-
-    #closeButton {
-      margin-top: 1.2rem;
-      padding: 0.6rem 1.4rem;
-      border-radius: 4px;
-      border: 1px solid #0074d9;
-      background: #0074d9;
-      color: #fff;
-      font-size: 1rem;
-      cursor: pointer;
-    }
-
-    #closeButton:disabled {
-      opacity: 0.6;
-      cursor: default;
-    }
-
-    #fallback-msg {
-      margin-top: 0.8rem;
-      font-size: 0.9rem;
-      color: #666;
-      display: none;
-    }
-  </style>
-</head>
-<body>
-  <div class="box">
-    <h1>SumUp Payment</h1>
-    <p>SumUp replied with status: <strong>${status || 'unknown'}</strong>.</p>
-    <p>This window will close automatically in a moment.</p>
-    <p>If it doesn’t, you can close it manually using the button below.</p>
-
-    <button id="closeButton">Close this tab now</button>
-    <p id="fallback-msg">
-      Your browser blocked automatic closing. Please close this tab manually if it remains open.
-    </p>
-  </div>
-
-  <script>
-    (function () {
-      "use strict";
-
-      const AUTO_CLOSE_DELAY_MS = 3000;
-      const closeButton   = document.getElementById("closeButton");
-      const fallbackMsg   = document.getElementById("fallback-msg");
-
-      /**
-       * Try to close the window. This will only work reliably if the window/tab
-       * was opened by script (e.g. via window.open).
-       */
-      function attemptClose(trigger) {
-        try {
-          console.log("Attempting to close window (trigger:", trigger + ")");
-
-          window.close();
-
-          setTimeout(() => {
-            // If we're still running here, assume the close was blocked.
-            fallbackMsg.style.display = "block";
-            closeButton.disabled = true;
-          }, 500);
-        } catch (err) {
-          console.error("Error attempting to close window:", err);
-          fallbackMsg.style.display = "block";
-        }
-      }
-
-      // Auto-close after a delay
-      window.addEventListener("load", () => {
-        setTimeout(() => attemptClose("auto-timeout"), AUTO_CLOSE_DELAY_MS);
-      });
-
-      // Manual close via button
-      closeButton.addEventListener("click", (ev) => {
-        ev.preventDefault();
-        attemptClose("manual-button");
-      });
-    })();
-  </script>
-</body>
-</html>
-`
+  logFromRequest(
+    req,
+    logLevels.INFO,
+    `SumUp app callback received status=${callbackStatus} transaction_code_present=${Boolean(txCode)}`
   );
+
+  let resultStatus = 'unknown';
+  try {
+    const result = await verifyAndFinalizeIntent(foreignTxId, {
+      source: 'app-callback',
+      expectedTransactionCode: txCode
+    });
+    if (result?.status === 'succeeded') resultStatus = 'success';
+    if (result?.status === 'failed') resultStatus = 'failed';
+  } catch (err) {
+    logFromRequest(req, logLevels.ERROR, `SumUp app callback verification unavailable: ${err.message}`);
+  }
+  return res.redirect(303, `${SUMUP_RESULT_PATH}?status=${resultStatus}`);
 }
 
-// Utility: normalise status from query string
+function readScalar(value, maxLength = 128) {
+  return typeof value === 'string' && value.length <= maxLength ? value.trim() : '';
+}
+
 function readStatus(query) {
-  return (query['smp-status'] ||
-    query['smpt-status'] ||   // some older / buggy implementations
-    query['status'] ||
-    '').toLowerCase();
+  const status = readScalar(
+    query['smp-status'] || query['smpt-status'] || query.status,
+    32
+  ).toLowerCase();
+  return APP_CALLBACK_STATUSES.has(status) ? status : 'unknown';
 }
 
 function readForeignTxId(query) {
-  return query['foreign-tx-id'] || query['foreign_tx_id'] || null;
+  return readScalar(query['foreign-tx-id'] || query.foreign_tx_id, 64) || null;
 }
 
 function readTxCode(query) {
-  return query['smp-tx-code'] || query['smp_tx_code'] || null;
+  const value = readScalar(query['smp-tx-code'] || query.smp_tx_code, 128);
+  return /^[A-Za-z0-9._-]+$/.test(value) ? value : null;
 }
 
-function readFailureInfo(query) {
+
+function createProviderSnapshot(transaction, channel) {
+  if (!transaction) return null;
+  const sourceTransaction = channel === 'hosted'
+    ? (Array.isArray(transaction.transactions) ? transaction.transactions[0] : null)
+    : transaction;
   return {
-    cause: query['smp-failure-cause'] || query['smp_failure_cause'] || null,
-    message: query['smp-message'] || query['smp_message'] || null,
+    channel,
+    status: transaction.status || null,
+    id: sourceTransaction?.id || transaction.id || null,
+    transaction_code: sourceTransaction?.transaction_code || transaction.transaction_code || null,
+    foreign_transaction_id: transaction.foreign_transaction_id || null,
+    merchant_code: transaction.merchant_code || null,
+    amount: transaction.amount == null ? null : Number(transaction.amount),
+    currency: transaction.currency || null
   };
 }
 
+async function verifyAndFinalizeIntent(intentId, options = {}) {
+  const existing = appVerificationInFlight.get(intentId);
+  if (existing) return existing;
+  const pending = verifyAndFinalizeIntentOnce(intentId, options)
+    .finally(() => appVerificationInFlight.delete(intentId));
+  appVerificationInFlight.set(intentId, pending);
+  return pending;
+}
 
 // --- Verification (server-to-server) then finalize into payments table ---
-async function verifyAndFinalizeIntent(intentId, { raw = null, source = 'manual' } = {}) {
+async function verifyAndFinalizeIntentOnce(
+  intentId,
+  { source = 'manual', expectedTransactionCode = null } = {}
+) {
   const intent = db.prepare('SELECT * FROM payment_intents WHERE intent_id=?').get(intentId);
-  if (!intent || intent.status !== 'pending') return;
+  if (!intent) return { status: 'not_found', verification_state: 'not_found' };
+  if (intent.status !== 'pending') {
+    return { status: intent.status, verification_state: intent.status };
+  }
   const auditUser = intent.created_by || (source === 'webhook' ? 'sumup-web' : 'sumup-app');
 
-  // Expiry guard
   const expiresAtTs = parseLocalSqlDateTime(intent.expires_at);
   if (expiresAtTs && expiresAtTs < Date.now()) {
     db.prepare(`UPDATE payment_intents SET status='expired' WHERE intent_id=? AND status='pending'`).run(intentId);
-    return;
+    return { status: 'expired', verification_state: 'expired' };
   }
 
-  // For hosted: fetch checkout status from API (PENDING|FAILED|PAID).
-
   let latest = null;
+  let providerSnapshot = null;
+  let providerTxn = null;
   if (intent.channel === 'hosted') {
     const list = await getCheckoutsByReference(intent.intent_id);
     latest = Array.isArray(list) ? list.slice(-1)[0] : null;
     if (!latest) {
-      log("Payment", logLevels.WARN, `No SumUp checkout found for intent=${intentId}`);
-      return;
+      log("Payment", logLevels.WARN, 'No SumUp hosted checkout found for pending intent');
+      return { status: 'pending', verification_state: 'not_found' };
     }
-    if (latest.status === 'PENDING') return; // keep waiting
+    providerSnapshot = createProviderSnapshot(latest, intent.channel);
+    if (latest.status === 'PENDING') {
+      return { status: 'pending', verification_state: 'pending' };
+    }
     if (latest.status === 'FAILED') {
       db.prepare(`UPDATE payment_intents SET status='failed' WHERE intent_id=? AND status='pending'`).run(intentId);
-      return;
+      return { status: 'failed', verification_state: 'failed' };
     }
-    if (latest.status !== 'PAID') return;
+    if (latest.status !== 'PAID') {
+      return { status: 'pending', verification_state: 'unknown' };
+    }
+    providerTxn = latest?.transactions?.[0]?.id || latest?.transactions?.[0]?.transaction_code || null;
+    if (!providerTxn) {
+      log("Payment", logLevels.ERROR, 'SumUp hosted checkout was paid without a transaction identifier');
+      return { status: 'pending', verification_state: 'mismatch' };
+    }
+  } else if (intent.channel === 'app') {
+    if (!SUMUP_API_KEY || !SUMUP_MERCHANT_CODE) {
+      log("Payment", logLevels.WARN, 'SumUp app transaction verification is unavailable: API credentials are not configured');
+      return { status: 'pending', verification_state: 'unavailable' };
+    }
+    try {
+      latest = await getTransactionByForeignReference(intent.intent_id);
+    } catch (error) {
+      log("Payment", logLevels.ERROR, `SumUp app transaction verification unavailable: ${error.message}`);
+      return { status: 'pending', verification_state: 'unavailable' };
+    }
+    if (!latest) {
+      return { status: 'pending', verification_state: 'not_found' };
+    }
+    const evaluation = evaluateAppTransaction(intent, latest, {
+      merchantCode: SUMUP_MERCHANT_CODE,
+      expectedTransactionCode
+    });
+    if (evaluation.mismatches.length > 0) {
+      log("Payment", logLevels.ERROR, `SumUp app transaction verification mismatch: ${evaluation.mismatches.join(',')}`);
+    }
+    providerSnapshot = createProviderSnapshot(latest, intent.channel);
+    if (evaluation.status === 'failed') {
+      db.prepare(`UPDATE payment_intents SET status='failed' WHERE intent_id=? AND status='pending'`).run(intentId);
+      return { status: 'failed', verification_state: 'failed' };
+    }
+    if (evaluation.status !== 'succeeded') {
+      return {
+        status: evaluation.status,
+        verification_state: evaluation.verification_state
+      };
+    }
+    providerTxn = evaluation.providerTransactionId;
+  } else {
+    return { status: 'pending', verification_state: 'unsupported_channel' };
   }
 
-  // If we're here, we're marking success.
   const amount = Number(toPounds(intent.amount_minor));
   const donationAmount = Number(toPounds(intent.donation_minor || 0));
   const paymentMethod = intent.channel === 'hosted' ? 'sumup-web' : 'sumup-app';
   const createdBy = auditUser;
-  const providerTxn = latest?.transactions?.[0]?.id || crypto.randomUUID();
   const t = db.transaction(() => {
-
-    // Check payment isn't already finalised (e.g. duplicate webhook from SumUp)
-    // Sunmup sometimes sends multiple notifications for the same checkout/payment.
-
     const existing = db.prepare(`
       SELECT id FROM payments
       WHERE provider = 'sumup' AND intent_id = ?
     `).get(intent.intent_id);
 
     if (existing && existing.id) {
-      log("Payment", logLevels.DEBUG, `Duplicate payment intent finalization ignored: intent=${intent.intent_id}`);
+      log("Payment", logLevels.DEBUG, `Duplicate payment intent finalization ignored: ref=${paymentLogRef(intent.intent_id)}`);
       // Already created a payment for this intent; nothing more to do.
       return;
     }
 
-// Create payment record
-    const r = db.prepare(`
+    db.prepare(`
       INSERT INTO payments (bidder_id, amount, donation_amount, method, note, created_by, provider, provider_txn_id, intent_id, raw_payload, currency, created_at)
       VALUES (?, ?, ?, ? , ?, ?, 'sumup', ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'))
-    `).run(intent.bidder_id, amount, donationAmount, paymentMethod, intent.note, createdBy, providerTxn, intent.intent_id, raw ? JSON.stringify(raw) : (latest ? JSON.stringify(latest) : null), CURRENCY);
+    `).run(
+      intent.bidder_id,
+      amount,
+      donationAmount,
+      paymentMethod,
+      intent.note,
+      createdBy,
+      providerTxn,
+      intent.intent_id,
+      providerSnapshot ? JSON.stringify(providerSnapshot) : null,
+      intent.currency || CURRENCY
+    );
 
-    // Mark intent done
     db.prepare(`UPDATE payment_intents SET status = 'succeeded' WHERE intent_id=?`).run(intent.intent_id);
-      log("Payment", logLevels.INFO, `Payment intent finalized: intent=${intent.intent_id}, amount=${intent.amount_minor}`);
-
-
+    log("Payment", logLevels.INFO, `Payment intent finalized: amount_minor=${intent.amount_minor}`);
     const bidderRow = db.get(`SELECT paddle_number FROM bidders WHERE id = ?`, [intent.bidder_id]);
 
     audit(auditUser, 'payment', 'bidder', intent.bidder_id, {
@@ -534,15 +475,12 @@ async function verifyAndFinalizeIntent(intentId, { raw = null, source = 'manual'
       intent: intent.intent_id
     });
 
-    // Recompute balance and set audit status on items
     const balance = recomputeBalanceAndAudit(intent.bidder_id);
     log("Payment", logLevels.DEBUG, `Payment complete. Bidder ${intent.bidder_id} / paddle number ${bidderRow.paddle_number} new balance after payment: ${balance}`);
-
   });
 
-  // run transaction
   t();
-
+  return { status: 'succeeded', verification_state: 'succeeded' };
 }
 
 
@@ -561,7 +499,7 @@ function buildDeepLink({ amount_minor, currency, title, external_reference }) {
   q.set('callbackfail', SUMUP_CALLBACK_FAIL);
   if (external_reference) q.set('foreign-tx-id', external_reference);
 
-  log("Payment", logLevels.DEBUG, `Deep link generated: sumupmerchant://pay/1.0?${q.toString()}`);
+  log("Payment", logLevels.DEBUG, 'SumUp app deep link generated');
   return `sumupmerchant://pay/1.0?${q.toString()}`;
 }
 
@@ -579,19 +517,16 @@ async function createHostedCheckout({ amount_minor, currency, checkout_reference
   };
 
 
-  const { body: res } = await request('https://api.sumup.com/v0.1/checkouts', {
+  const { statusCode, body: responseBody } = await request('https://api.sumup.com/v0.1/checkouts', {
     method: 'POST',
     headers: { Authorization: `Bearer ${SUMUP_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    headersTimeout: 5000,
+    bodyTimeout: 10000
   });
-  const data = await res.json();
-  if (!data?.hosted_checkout_url || !data?.id) {
-    log(
-      "Payment",
-      logLevels.ERROR,
-      `SumUp checkout response error: ${JSON.stringify(data)}`
-    );
-
+  const data = await responseBody.json();
+  if (statusCode < 200 || statusCode >= 300 || !data?.hosted_checkout_url || !data?.id) {
+    log("Payment", logLevels.ERROR, `SumUp checkout request failed with status ${statusCode}`);
     throw new Error('Invalid SumUp checkout response');
   }
   return { url: data.hosted_checkout_url, checkout_id: data.id };
@@ -600,8 +535,21 @@ async function createHostedCheckout({ amount_minor, currency, checkout_reference
 async function getCheckoutsByReference(checkout_reference) {
   if (!SUMUP_API_KEY) return [];
   const url = `https://api.sumup.com/v0.1/checkouts?checkout_reference=${encodeURIComponent(checkout_reference)}`;
-  const { body } = await request(url, { headers: { Authorization: `Bearer ${SUMUP_API_KEY}` } });
+  const { body } = await request(url, {
+    headers: { Authorization: `Bearer ${SUMUP_API_KEY}` },
+    headersTimeout: 5000,
+    bodyTimeout: 10000
+  });
   return body.json(); // array, status in ['PENDING','FAILED','PAID']
+}
+
+async function getTransactionByForeignReference(foreignTransactionId) {
+  return fetchTransactionByForeignReference({
+    request,
+    apiKey: SUMUP_API_KEY,
+    merchantCode: SUMUP_MERCHANT_CODE,
+    foreignTransactionId
+  });
 }
 
 // --- Expire stale intents ---
@@ -632,4 +580,10 @@ const getPaymentLabelForBidder = (bidderId) => {
   return `${auctionName} - Bidder ${row.paddle_number}`;
 };
 
-module.exports = { api, paymentProcessorVer, verifyAndFinalizeIntent };
+module.exports = {
+  api,
+  paymentProcessorVer,
+  verifyAndFinalizeIntent,
+  readStatus,
+  appTransactionMismatches
+};

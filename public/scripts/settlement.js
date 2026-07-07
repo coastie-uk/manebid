@@ -92,6 +92,19 @@ const API_ROOT = `${API}/settlement`;
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
 
+  const SAFE_PHOTO_FILENAME = /^resized_[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.jpg$/i;
+  const safePhotoFilename = value => {
+    const text = String(value ?? '').trim();
+    return SAFE_PHOTO_FILENAME.test(text) ? text : '';
+  };
+
+  function appendTextCell(row, value) {
+    const cell = document.createElement('td');
+    cell.textContent = value ?? '';
+    row.appendChild(cell);
+    return cell;
+  }
+
   const truncateReceiptText = (value, max = 30) => {
     const text = String(value ?? '').replace(/\s+/g, ' ').trim();
     if (text.length <= max) return text;
@@ -593,7 +606,8 @@ buttons.forEach(btn => {
       if(getPaymentStatus(b)==='part-paid') tr.classList.add('bidder-part-paid');
       if(b.balance<0) tr.classList.add('bidder-negative');
       tr.dataset.id=b.id;
-      tr.innerHTML=`<td>${escapeHtml(formatBidderLabel(b))}</td><td>${money(b.balance)}</td>`;
+      appendTextCell(tr, formatBidderLabel(b));
+      appendTextCell(tr, money(b.balance));
       tr.onclick=()=>selectBidder(b);
       if((selectedBidderId ?? selBidder?.id)===b.id) tr.classList.add('sel');
       bidderBody.appendChild(tr);
@@ -699,31 +713,38 @@ updateTotals();
     }
     lots.forEach(l=>{
 
-    const prc = l.test_bid != null ? `${money(l.hammer_price)} <b>[T]</b>` : money(l.hammer_price);
-    const desc = l.test_item != null ? `${l.description} <b>[T]</b>` : l.description;
-    const photoUrl = l.photo_url || l.photoUrl || l.photo || '';
+    const prc = l.test_bid != null ? `${money(l.hammer_price)} [T]` : money(l.hammer_price);
+    const desc = l.test_item != null ? `${l.description ?? ''} [T]` : (l.description ?? '');
+    const photoUrl = safePhotoFilename(l.photo_url || l.photoUrl || l.photo || '');
 
       const tr=document.createElement('tr');
       tr.classList.add(statusClass);
-      tr.innerHTML=`<td>${l.item_number}</td><td>${desc}</td><td>${prc}</td>`;
+      appendTextCell(tr, l.item_number);
+      appendTextCell(tr, desc);
+      appendTextCell(tr, prc);
       if (photoUrl) tr.dataset.photoUrl = photoUrl;
       else delete tr.dataset.photoUrl;
       lotsBody.appendChild(tr);
     });
 
     if (lotsPreviewStripEl) {
-      const pictureLots = lots.filter(l => l.photo_url || l.photoUrl || l.photo || '');
+      const pictureLots = lots.filter(l => safePhotoFilename(l.photo_url || l.photoUrl || l.photo || ''));
       const previewLots = showPictures ? pictureLots.slice(0, 6) : [];
       const remainingCount = showPictures ? Math.max(0, pictureLots.length - previewLots.length) : 0;
       lotsPreviewStripEl.innerHTML = '';
 
       previewLots.forEach((lot) => {
-        const photoUrl = lot.photo_url || lot.photoUrl || lot.photo || '';
+        const photoUrl = safePhotoFilename(lot.photo_url || lot.photoUrl || lot.photo || '');
+        if (!photoUrl) return;
         const figure = document.createElement('figure');
         figure.className = 'lot-preview-thumb';
-        figure.innerHTML = `
-          <img src="${uploadBase}/preview_${photoUrl}" alt="Lot ${lot.item_number} preview" loading="lazy">
-          <figcaption>Lot ${lot.item_number}</figcaption>`;
+        const img = document.createElement('img');
+        img.src = `${uploadBase}/preview_${photoUrl}`;
+        img.alt = `Lot ${lot.item_number ?? ''} preview`;
+        img.loading = 'lazy';
+        const caption = document.createElement('figcaption');
+        caption.textContent = `Lot ${lot.item_number ?? ''}`;
+        figure.append(img, caption);
         lotsPreviewStripEl.appendChild(figure);
       });
 
@@ -748,11 +769,21 @@ updateTotals();
       const paymentNote = donation > 0
         ? `${p.note || ''}${p.note ? ' | ' : ''}Donation ${money(donation)}`
         : (p.note || '');
-      if (p.amount < 0) {
-        tr.innerHTML = `<td>${p.id}</td><td>${new Date(p.created_at).toLocaleString()}</td><td>${formatPaymentMethod(p.method)}</td><td>${money(p.amount)}</td><td>${paymentNote}</td><td></td>`;
-      } else {
-        tr.innerHTML = `<td>${p.id}</td><td>${new Date(p.created_at).toLocaleString()}</td><td>${formatPaymentMethod(p.method)}</td><td>${money(p.amount)}</td><td>${paymentNote}</td><td><button data-id="${p.id}" class="delPay refund-button">Refund</button></td>`;
+      appendTextCell(tr, p.id);
+      appendTextCell(tr, new Date(p.created_at).toLocaleString());
+      appendTextCell(tr, formatPaymentMethod(p.method));
+      appendTextCell(tr, money(p.amount));
+      appendTextCell(tr, paymentNote);
+      const actionCell = document.createElement('td');
+      if (p.amount >= 0) {
+        const refundButton = document.createElement('button');
+        refundButton.type = 'button';
+        refundButton.dataset.id = p.id;
+        refundButton.className = 'delPay refund-button';
+        refundButton.textContent = 'Refund';
+        actionCell.appendChild(refundButton);
       }
+      tr.appendChild(actionCell);
       payBody.appendChild(tr);
     });
     payBody.querySelectorAll('.delPay').forEach(btn => {
@@ -786,6 +817,51 @@ updateTotals();
 
 
   // ---------- SumUp integration helper ----------
+  async function pollSumupIntent(intentId, maxAttempts = 20) {
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 3000));
+      try {
+        const response = await window.AppAuth.authenticatedFetch(
+          `${API}/payments/intents/${encodeURIComponent(intentId)}/verify`,
+          { method: 'POST' }
+        );
+        const status = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(status.error || 'Unable to verify SumUp payment');
+        }
+        if (status.status === 'succeeded') {
+          showMessage('SumUp payment confirmed.', 'success');
+          await fetchBidders();
+          return;
+        }
+        if (status.status === 'failed' || status.status === 'expired') {
+          showMessage(`SumUp payment ${status.status}.`, 'error');
+          await fetchBidders();
+          return;
+        }
+        if (status.verification_state === 'unavailable') {
+          showMessage(
+            'SumUp verification is currently unavailable. The payment remains pending and has not been recorded.',
+            'info'
+          );
+          return;
+        }
+        if (status.verification_state === 'mismatch') {
+          showMessage(
+            'SumUp returned transaction details that did not match this payment. The payment remains pending.',
+            'error'
+          );
+          return;
+        }
+      } catch (error) {
+        if (attempt === maxAttempts - 1) {
+          showMessage(`SumUp verification could not be completed: ${error.message}`, 'error');
+        }
+      }
+    }
+    showMessage('SumUp confirmation is still pending. No payment has been recorded.', 'info');
+  }
+
   async function startSumupPayment(amt, donation, note, mode = 'app') {
     if (!selBidder) {
       showMessage('No bidder selected', 'error');
@@ -839,14 +915,12 @@ updateTotals();
 
       // If this is a SumUp app deep link, this will jump into the app on a tablet/phone.
       // If it’s a hosted checkout URL, it will open in a new tab.
-     window.open(url, '_blank', 'noopener');
-
-
-
-        showMessage(
-          'SumUp payment started. Complete the card payment in the SumUp app, then refresh to see the updated balance.',
-          'info'
-        );
+      window.open(url, '_blank', 'noopener');
+      showMessage(
+        'SumUp payment started. ManeBid will record it only after direct verification from SumUp.',
+        'info'
+      );
+      void pollSumupIntent(data.intent_id);
 
     } catch (err) {
 

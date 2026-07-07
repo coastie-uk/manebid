@@ -3,7 +3,12 @@
  */
 
 const ROLE_LIST = Object.freeze(['admin', 'maintenance', 'cashier', 'slideshow']);
-const PERMISSION_LIST = Object.freeze(['live_feed', 'admin_bidding', 'manage_users']);
+const PERMISSION_LIST = Object.freeze([
+  'live_feed',
+  'admin_bidding',
+  'manage_users',
+  'restore_database'
+]);
 const ROOT_USERNAME = 'root';
 
 module.exports = {

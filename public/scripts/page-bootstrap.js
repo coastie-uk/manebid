@@ -40,4 +40,36 @@
   if (root.dataset.assetVersion) {
     global.__CASHIER_ASSET_VERSION__ = root.dataset.assetVersion;
   }
+
+  function loadThirdPartyNotices() {
+    const targets = document.querySelectorAll("[data-third-party-notices]");
+    if (!targets.length) return;
+
+    const formatNoticeText = (text) => text
+      .replace(/\r\n?/g, "\n")
+      .replace(/([^\n])\n(?!\n|[-#])/g, "$1 ");
+
+    fetch("/THIRD_PARTY_NOTICES.md")
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.text();
+      })
+      .then((text) => {
+        const displayText = formatNoticeText(text);
+        targets.forEach((target) => {
+          target.textContent = displayText;
+        });
+      })
+      .catch(() => {
+        targets.forEach((target) => {
+          target.textContent = "Third-party notices could not be loaded. See /THIRD_PARTY_NOTICES.md.";
+        });
+      });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", loadThirdPartyNotices, { once: true });
+  } else {
+    loadThirdPartyNotices();
+  }
 })(window);

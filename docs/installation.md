@@ -194,6 +194,12 @@ Below is a description of each setting:
 | `MAX_AUCTIONS` | number | `100` | Max auctions allowed in the system. Range: **1–100**. |
 | `MAX_ITEMS` | number | `2000` | Max items across auctions. Range: **1–10000**. |
 | `ITEM_PHOTO_MAX_BYTES` | number | `10485760` | Maximum item photo upload size in bytes. Range: **1024–52428800** (1 KiB–50 MiB). |
+| `RESOURCE_IMAGE_MAX_BYTES` | number | `10485760` | Maximum size of one maintenance resource image. Range: **1024–52428800**. |
+| `RESOURCE_UPLOAD_MAX_FILES` | number | `20` | Maximum resource images accepted in one request. Range: **1–MAX_UPLOADS**. |
+| `BACKUP_UPLOAD_MAX_BYTES` | number | `536870912` | Maximum compressed managed-backup upload and archive size. Range: **1024–17179869184**. |
+| `BACKUP_ARCHIVE_MAX_EXPANDED_BYTES` | number | `2147483648` | Maximum cumulative expanded size while inspecting or restoring a backup. Range: **1024–68719476736**. |
+| `BACKUP_ARCHIVE_MAX_ENTRY_BYTES` | number | `536870912` | Maximum expanded size of one backup entry. Range: **1024–BACKUP_ARCHIVE_MAX_EXPANDED_BYTES**. |
+| `BACKUP_ARCHIVE_MAX_ENTRIES` | number | `10000` | Maximum number of ZIP entries, including directories. Range: **1–100000**. |
 | `CURRENCY_SYMBOL` | text | `"£"` | Currency symbol for display. Length **1–3** characters. |
 | `PASSWORD_MIN_LENGTH` | number | `8` | Minimum password length. Range: **5–100**. |
 | `RATE_LIMIT_WINDOW` | number | `60` | Public item submission rate limit window in seconds. Range: **1–86400**. |
@@ -277,6 +283,20 @@ After changing either setting, restart the backend and confirm that:
 - requests still reach `/api/` through Apache;
 - logs show the real client address rather than the proxy address; and
 - two different client addresses receive separate rate-limit quotas.
+
+### Upload limits at Apache and nginx
+
+The backend always enforces the resource and backup limits above. The tracked
+`deploy/apache-manebid-security.conf` also applies `LimitRequestBody` to the two
+maintenance upload routes using the documented defaults plus multipart
+overhead. If you change the backend limits, update that fragment and reload
+Apache so the values remain aligned.
+
+If nginx is the internet-facing proxy, configure an equivalent
+`client_max_body_size` for `/api/maintenance/backups/import/inspect` and
+`/api/maintenance/resources/upload`. The nginx limit must include multipart
+overhead and must not be lower than the intended backend limit. The backend
+remains the authoritative control.
 
 If you make changes once the server is running, remember to restart the service to pick up changes:
 

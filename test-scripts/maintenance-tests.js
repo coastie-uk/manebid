@@ -54,6 +54,12 @@ const managedUsers = {
     password: `MtPermMgr_${userSeed}_P1!`,
     roles: ["maintenance"],
     permissions: ["manage_users"]
+  },
+  backupOperator: {
+    username: `mt_backup_${userSeed}`,
+    password: `MtBackup_${userSeed}_B1!`,
+    roles: ["maintenance"],
+    permissions: ["restore_database"]
   }
 };
 
@@ -507,6 +513,8 @@ addTest("M-003B","maintenance/backups import inspect success with same-major sch
 });
 
 addTest("M-003C","maintenance/backups import inspect failure missing metadata.json", async () => {
+  const importStageDir = path.join(config.BACKUP_DIR, ".managed-imports");
+  const before = fs.existsSync(importStageDir) ? fs.readdirSync(importStageDir).sort() : null;
   const missingMetadataArchive = Buffer.from(await (async () => {
     const zip = await JSZip.loadAsync(context.managedBackupArchive);
     zip.remove("metadata.json");
@@ -514,6 +522,9 @@ addTest("M-003C","maintenance/backups import inspect failure missing metadata.js
   })());
   const { res } = await inspectManagedBackupArchiveUpload(missingMetadataArchive, `managed-import-no-metadata-${Date.now()}.zip`);
   await expectStatus(res, 400);
+  if (before) {
+    assert.deepEqual(fs.readdirSync(importStageDir).sort(), before, "Rejected backup left staged files");
+  }
 });
 
 addTest("M-003D","maintenance/backups import inspect failure unexpected file type", async () => {
@@ -1079,6 +1090,7 @@ addTest("M-021","maintenance/users list success", async () => {
   assert.ok(Array.isArray(json?.roles), "Roles metadata missing");
   assert.ok(Array.isArray(json?.permissions), "Permissions metadata missing");
   assert.ok(json.permissions.includes("manage_users"), "manage_users permission missing from catalog");
+  assert.ok(json.permissions.includes("restore_database"), "restore_database permission missing from catalog");
   assert.ok(json.users.every((user) => Array.isArray(user.permissions)), "Expected each user to include permissions");
 });
 
@@ -1150,6 +1162,109 @@ addTest("M-021aa","maintenance user without manage_users is denied all user-mana
   for (const result of results) {
     await expectStatus(result.res, 403);
   }
+
+  const allowedList = await fetchJson(`${baseUrl}/maintenance/backups`, {
+    headers: authHeaders(limitedToken)
+  });
+  await expectStatus(allowedList.res, 200);
+  const protectedBackupId = context.importedManagedBackupId;
+  assert.ok(protectedBackupId, "Expected an imported backup for permission checks");
+  const allowedDetail = await fetchJson(
+    `${baseUrl}/maintenance/backups/${encodeURIComponent(protectedBackupId)}`,
+    { headers: authHeaders(limitedToken) }
+  );
+  await expectStatus(allowedDetail.res, 200);
+
+  const importForm = new FormData();
+  importForm.append("backup", new Blob(["not a zip"], { type: "application/zip" }), "blocked.zip");
+  const sensitiveBackupChecks = [
+    fetch(`${baseUrl}/maintenance/backups/${encodeURIComponent(protectedBackupId)}/download`, {
+      headers: authHeaders(limitedToken)
+    }),
+    fetchJson(`${baseUrl}/maintenance/backups/${encodeURIComponent(protectedBackupId)}/restore`, {
+      method: "POST",
+      headers: authHeaders(limitedToken, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ restorePhotos: true })
+    }).then((result) => result.res),
+    fetch(`${baseUrl}/maintenance/backups/import/inspect`, {
+      method: "POST",
+      headers: authHeaders(limitedToken),
+      body: importForm
+    }),
+    fetchJson(`${baseUrl}/maintenance/backups/import/confirm`, {
+      method: "POST",
+      headers: authHeaders(limitedToken, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ import_token: "0".repeat(32) })
+    }).then((result) => result.res)
+  ];
+  for (const response of await Promise.all(sensitiveBackupChecks)) {
+    await expectStatus(response, 403);
+  }
+});
+
+addTest("M-021ab","restore_database user can upload, confirm, and download backups", async () => {
+  const operator = managedUsers.backupOperator;
+  const create = await fetchJson(`${baseUrl}/maintenance/users`, {
+    method: "POST",
+    headers: authHeaders(context.token, { "Content-Type": "application/json" }),
+    body: JSON.stringify(operator)
+  });
+  if (create.res.status !== 201 && create.res.status !== 409) {
+    throw new Error(`Failed to prepare backup operator: ${create.text || create.res.status}`);
+  }
+  if (create.res.status === 409) {
+    const update = await fetchJson(`${baseUrl}/maintenance/users/${encodeURIComponent(operator.username)}/access`, {
+      method: "PATCH",
+      headers: authHeaders(context.token, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ roles: operator.roles, permissions: operator.permissions })
+    });
+    await expectStatus(update.res, 200);
+  }
+
+  const login = await fetchJson(`${baseUrl}/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: operator.username, password: operator.password })
+  });
+  await expectStatus(login.res, 200);
+  const operatorSession = login.res._session;
+  assert.ok(operatorSession, "Expected backup operator session");
+
+  const download = await fetch(
+    `${baseUrl}/maintenance/backups/${encodeURIComponent(context.importedManagedBackupId)}/download`,
+    { headers: authHeaders(operatorSession) }
+  );
+  await expectStatus(download, 200);
+  assert.ok((await download.arrayBuffer()).byteLength > 0, "Expected backup download data");
+
+  const form = new FormData();
+  form.append(
+    "backup",
+    new Blob([context.managedBackupArchive], { type: "application/zip" }),
+    `permission-import-${Date.now()}.zip`
+  );
+  const inspect = await fetchJson(`${baseUrl}/maintenance/backups/import/inspect`, {
+    method: "POST",
+    headers: authHeaders(operatorSession),
+    body: form
+  });
+  await expectStatus(inspect.res, 200);
+  assert.ok(inspect.json?.import_token, `Expected import token: ${inspect.text}`);
+
+  const confirm = await fetchJson(`${baseUrl}/maintenance/backups/import/confirm`, {
+    method: "POST",
+    headers: authHeaders(operatorSession, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ import_token: inspect.json.import_token })
+  });
+  await expectStatus(confirm.res, 200);
+  const importedBackupId = confirm.json?.backup?.backup_id;
+  assert.ok(importedBackupId, "Expected imported backup ID");
+
+  const cleanup = await fetch(`${baseUrl}/maintenance/backups/${encodeURIComponent(importedBackupId)}`, {
+    method: "DELETE",
+    headers: authHeaders(operatorSession)
+  });
+  await expectStatus(cleanup, 200);
 });
 
 addTest("M-021b","maintenance/users create failure invalid username", async () => {
@@ -1816,6 +1931,48 @@ addTest("M-031","maintenance/resources upload failure no files", async () => {
     body: form
   });
   await expectStatus(res, 400);
+});
+
+addTest("M-031a","maintenance/resources rejects invalid image content without orphan files", async () => {
+  const before = fs.existsSync(config.UPLOAD_DIR)
+    ? fs.readdirSync(config.UPLOAD_DIR).sort()
+    : null;
+  const form = new FormData();
+  form.append(
+    "images",
+    new Blob([Buffer.from("not an image")], { type: "image/jpeg" }),
+    `invalid-resource-${Date.now()}.jpg`
+  );
+  const res = await fetch(`${baseUrl}/maintenance/resources/upload`, {
+    method: "POST",
+    headers: authHeaders(context.token),
+    body: form
+  });
+  await expectStatus(res, 400);
+  if (before) {
+    assert.deepEqual(fs.readdirSync(config.UPLOAD_DIR).sort(), before, "Invalid upload left a temporary file");
+  }
+});
+
+addTest("M-031b","maintenance/resources rejects oversized images without orphan files", async () => {
+  const before = fs.existsSync(config.UPLOAD_DIR)
+    ? fs.readdirSync(config.UPLOAD_DIR).sort()
+    : null;
+  const form = new FormData();
+  form.append(
+    "images",
+    new Blob([Buffer.alloc(Number(config.RESOURCE_IMAGE_MAX_BYTES || 10 * 1024 * 1024) + 1)], { type: "image/jpeg" }),
+    `oversized-resource-${Date.now()}.jpg`
+  );
+  const res = await fetch(`${baseUrl}/maintenance/resources/upload`, {
+    method: "POST",
+    headers: authHeaders(context.token),
+    body: form
+  });
+  await expectStatus(res, 413);
+  if (before) {
+    assert.deepEqual(fs.readdirSync(config.UPLOAD_DIR).sort(), before, "Oversized upload left a temporary file");
+  }
 });
 
 addTest("M-032","maintenance/resources upload success", async () => {

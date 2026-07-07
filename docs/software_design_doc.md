@@ -12,9 +12,9 @@ It focuses on:
 
 Current code snapshot:
 
-- backend package version: `3.0.2-dev06`
+- backend package version: `3.0.2-dev07-s1`
 - database schema version: `3.0`
-- payment processor module version: `SumUp 1.2.0(2026-02-09)`
+- payment processor module version: `SumUp 1.3.0(2026-07-05)`
 
 Notes:
 
@@ -70,6 +70,7 @@ Current explicit permissions:
 - `live_feed`
 - `admin_bidding`
 - `manage_users`
+- `restore_database`
 
 ---
 
@@ -749,11 +750,16 @@ Provider-facing endpoints:
 Optional polling fallback:
 
 - `GET /api/payments/intents/:id`
+- `POST /api/payments/intents/:id/verify`
 
 Data flow:
 
 - inserts pending `payment_intents`
-- verifies remote completion
+- treats browser/app callbacks as notifications only
+- verifies app transactions through SumUp's Transactions API using
+  `foreign_transaction_id`
+- requires matching merchant, amount, currency, reference, and provider status
+- leaves app intents pending when direct verification is unavailable
 - writes final `payments` rows with provider metadata
 - supports both hosted checkout and app deep-link flows
 - tracks donations separately from settlement amount
@@ -813,6 +819,13 @@ Data flow:
 - imported backups preserve the source archive `backup_id` as `archive_backup_id`
 - import preview compares imported schema/database metadata against the live server
 - import blocks backups whose schema major version differs from the live server
+- backup upload, import confirmation, archive download, and every restore mode
+  require the `restore_database` permission
+- backup creation, listing, detail inspection, and deletion remain available to
+  the base `maintenance` role
+- imports are streamed into isolated staging with compressed/expanded byte,
+  entry count, per-entry, path, and type limits
+- failed imports and resource-image uploads remove all temporary files
 - restore provenance is written into `metadata`
 
 Retired route:
@@ -860,6 +873,7 @@ Endpoints:
 Rules:
 
 - only operators with `manage_users` can use the management routes
+- `restore_database` depends on the `maintenance` role, as `manage_users` does
 - managers can only grant or remove roles/permissions they themselves hold
 - users cannot change their own access
 - remote logout bumps `session_invalid_before`
@@ -1045,6 +1059,7 @@ Cashier/live feed/settlement:
 - `POST /api/settlement/payment/:auctionId`
 - `POST /api/payments/intents`
 - `GET /api/payments/intents/:id`
+- `POST /api/payments/intents/:id/verify`
 - `POST /api/settlement/payment/:paymentId/reverse`
 - `GET /api/settlement/export.csv`
 - `GET /api/settlement/summary`

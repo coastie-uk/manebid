@@ -190,13 +190,16 @@ function normalisePermissions(inputPermissions, roles = []) {
   const seen = new Set();
   const normalizedRoles = normaliseRoles(roles);
   const canBid = normalizedRoles.includes('admin');
-  const canManageUsers = normalizedRoles.includes('maintenance');
+  const canUseMaintenancePermissions = normalizedRoles.includes('maintenance');
 
   for (const permission of source) {
     const normalized = String(permission || '').trim().toLowerCase();
     if (!PERMISSION_SET.has(normalized) || seen.has(normalized)) continue;
     if (normalized === 'admin_bidding' && !canBid) continue;
-    if (normalized === 'manage_users' && !canManageUsers) continue;
+    if (
+      (normalized === 'manage_users' || normalized === 'restore_database')
+      && !canUseMaintenancePermissions
+    ) continue;
     seen.add(normalized);
     result.push(normalized);
   }

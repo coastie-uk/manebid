@@ -11,10 +11,33 @@ const fs = require("fs");
 const multer = require("multer");
 const { Parser } = require("@json2csv/plainjs");
 const { exec } = require("child_process");
-const JSZip = require("jszip");
 const Database = require("better-sqlite3");
 const router = express.Router();
-const { CONFIG_IMG_DIR, SAMPLE_DIR, UPLOAD_DIR, DB_PATH, DB_NAME, BACKUP_DIR, MAX_UPLOADS, allowedExtensions, MAX_AUCTIONS, MAX_ITEMS, PPTX_CONFIG_DIR, LOG_DIR, LOG_NAME, OUTPUT_DIR, PASSWORD_MIN_LENGTH, SERVICE_NAME, MESSAGING_PERSISTENCE_FILE } = require('./config');
+const {
+  CONFIG_IMG_DIR,
+  SAMPLE_DIR,
+  UPLOAD_DIR,
+  DB_PATH,
+  DB_NAME,
+  BACKUP_DIR,
+  MAX_UPLOADS,
+  allowedExtensions,
+  MAX_AUCTIONS,
+  MAX_ITEMS,
+  PPTX_CONFIG_DIR,
+  LOG_DIR,
+  LOG_NAME,
+  OUTPUT_DIR,
+  PASSWORD_MIN_LENGTH,
+  SERVICE_NAME,
+  MESSAGING_PERSISTENCE_FILE,
+  RESOURCE_IMAGE_MAX_BYTES,
+  RESOURCE_UPLOAD_MAX_FILES,
+  BACKUP_UPLOAD_MAX_BYTES,
+  BACKUP_ARCHIVE_MAX_EXPANDED_BYTES,
+  BACKUP_ARCHIVE_MAX_ENTRY_BYTES,
+  BACKUP_ARCHIVE_MAX_ENTRIES
+} = require('./config');
 const crypto = require('crypto');
 const { validateJsonPaths } = require('./middleware/json-path-validator');
 const { validateAndNormalizeSlipConfig } = require('./slip-config');
@@ -59,6 +82,7 @@ const {
   getAuditActor
 } = require('./users');
 const messaging = require('./messaging');
+const { processZipArchive } = require('./managed-backup-archive');
 
 // (
 //  { ttlSeconds: 2 }   // optional – default is 5
@@ -81,8 +105,54 @@ const RESOURCE_CONFIG_BACKUP_PATHS = Object.freeze([
   { key: "slip", filename: "slipConfig.json", livePath: CONFIG_PATHS.slip }
 ]);
 fs.mkdirSync(MANAGED_BACKUP_IMPORT_STAGE_DIR, { recursive: true });
-const upload = multer({ dest: UPLOAD_DIR });
-const backupImportUpload = multer({ dest: MANAGED_BACKUP_IMPORT_STAGE_DIR });
+const RESOURCE_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
+const BACKUP_ARCHIVE_MIME_TYPES = new Set([
+  "application/zip",
+  "application/x-zip-compressed",
+  "application/octet-stream"
+]);
+const upload = multer({
+  dest: UPLOAD_DIR,
+  limits: {
+    fileSize: RESOURCE_IMAGE_MAX_BYTES,
+    files: RESOURCE_UPLOAD_MAX_FILES,
+    fields: 0,
+    parts: RESOURCE_UPLOAD_MAX_FILES + 1,
+    fieldNameSize: 64
+  },
+  fileFilter(_req, file, callback) {
+    const extension = path.extname(file.originalname || "").toLowerCase();
+    const mimeType = String(file.mimetype || "").toLowerCase();
+    if (!allowedExtensions.includes(extension) || !RESOURCE_IMAGE_MIME_TYPES.has(mimeType)) {
+      const error = new multer.MulterError("LIMIT_UNEXPECTED_FILE", file.fieldname);
+      error.message = "Only JPEG and PNG resource images are accepted.";
+      callback(error);
+      return;
+    }
+    callback(null, true);
+  }
+});
+const backupImportUpload = multer({
+  dest: MANAGED_BACKUP_IMPORT_STAGE_DIR,
+  limits: {
+    fileSize: BACKUP_UPLOAD_MAX_BYTES,
+    files: 1,
+    fields: 0,
+    parts: 2,
+    fieldNameSize: 64
+  },
+  fileFilter(_req, file, callback) {
+    const extension = path.extname(file.originalname || "").toLowerCase();
+    const mimeType = String(file.mimetype || "").toLowerCase();
+    if (extension !== ".zip" || !BACKUP_ARCHIVE_MIME_TYPES.has(mimeType)) {
+      const error = new multer.MulterError("LIMIT_UNEXPECTED_FILE", file.fieldname);
+      error.message = "Only ZIP backup archives are accepted.";
+      callback(error);
+      return;
+    }
+    callback(null, true);
+  }
+});
 
 function ensureDirectory(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
@@ -715,33 +785,6 @@ function readSqliteSnapshotMetadata(filePath) {
   }
 }
 
-function archiveContainsEntries(zip, prefix) {
-  return Object.values(zip.files).some((entry) => !entry.dir && entry.name.startsWith(prefix));
-}
-
-async function extractZipPrefixToDirectory(zip, prefix, targetDir) {
-  let extracted = 0;
-
-  for (const entry of Object.values(zip.files)) {
-    if (entry.dir || !entry.name.startsWith(prefix)) {
-      continue;
-    }
-
-    const relativePath = entry.name.slice(prefix.length);
-    if (!relativePath) {
-      continue;
-    }
-
-    const destination = safeResolveWithin(targetDir, relativePath);
-    ensureDirectory(path.dirname(destination));
-    const content = await entry.async("nodebuffer");
-    fs.writeFileSync(destination, content);
-    extracted += 1;
-  }
-
-  return extracted;
-}
-
 function validateManagedBackupMetadata(metadata) {
   if (!metadata || Number(metadata.format_version) !== MANAGED_BACKUP_FORMAT_VERSION) {
     throw new Error("Unsupported backup format.");
@@ -862,6 +905,9 @@ function isAllowedManagedBackupArchiveEntry(name) {
   if (name === "metadata.json" || name === "backup.log" || name === "database/auction.db") {
     return true;
   }
+  if (name === "database/" || name === "resources/" || name === "resources/config/") {
+    return true;
+  }
   if (name === "resources/config/pptxConfig.json" || name === "resources/config/cardConfig.json" || name === "resources/config/slipConfig.json") {
     return true;
   }
@@ -880,6 +926,9 @@ function validateManagedBackupArchiveEntryName(name) {
   if (!isAllowedManagedBackupArchiveEntry(entryName)) {
     throw new Error(`Unexpected archive entry: ${entryName}`);
   }
+  if (entryName.endsWith("/")) {
+    return;
+  }
   if (entryName.startsWith("photos/") || entryName.startsWith("resources/images/")) {
     const ext = path.extname(entryName).toLowerCase();
     if (!allowedExtensions.includes(ext)) {
@@ -888,26 +937,45 @@ function validateManagedBackupArchiveEntryName(name) {
   }
 }
 
+function getManagedBackupArchiveOptions(destinationForEntry = () => null) {
+  return {
+    maxArchiveBytes: BACKUP_UPLOAD_MAX_BYTES,
+    maxExpandedBytes: BACKUP_ARCHIVE_MAX_EXPANDED_BYTES,
+    maxEntryBytes: BACKUP_ARCHIVE_MAX_ENTRY_BYTES,
+    maxEntries: BACKUP_ARCHIVE_MAX_ENTRIES,
+    validateEntryName: validateManagedBackupArchiveEntryName,
+    destinationForEntry
+  };
+}
+
+function getStagedArchiveEntryPath(stagingRoot, entryName) {
+  return safeResolveWithin(stagingRoot, entryName.split("/").join(path.sep));
+}
+
 async function inspectManagedBackupArchive(zipPath) {
   const tempRoot = fs.mkdtempSync(path.join(MANAGED_BACKUP_IMPORT_STAGE_DIR, "inspect-"));
   try {
-    const zip = await JSZip.loadAsync(fs.readFileSync(zipPath));
-    const metadataEntry = zip.file("metadata.json");
-    if (!metadataEntry) {
+    const scan = await processZipArchive(zipPath, getManagedBackupArchiveOptions((entryName) => {
+      if (entryName === "metadata.json" || entryName === "database/auction.db") {
+        return getStagedArchiveEntryPath(tempRoot, entryName);
+      }
+      return null;
+    }));
+    const metadataPath = path.join(tempRoot, "metadata.json");
+    if (!fs.existsSync(metadataPath)) {
       throw new Error("Backup archive is missing metadata.json.");
     }
 
-    const metadata = validateManagedBackupMetadata(JSON.parse(await metadataEntry.async("string")));
+    const metadata = validateManagedBackupMetadata(JSON.parse(fs.readFileSync(metadataPath, "utf8")));
     const warnings = [];
     const blockingErrors = [];
-    const fileEntries = Object.values(zip.files).filter((entry) => !entry.dir);
+    const fileEntries = scan.entries;
     const photos = [];
     const resourceImages = [];
     const resourceConfigs = new Set();
     let hasDatabaseSnapshot = false;
 
     for (const entry of fileEntries) {
-      validateManagedBackupArchiveEntryName(entry.name);
       if (entry.name === "database/auction.db") {
         hasDatabaseSnapshot = true;
       } else if (entry.name.startsWith("photos/")) {
@@ -966,7 +1034,8 @@ async function inspectManagedBackupArchive(zipPath) {
       ...metadata,
       archive_backup_id: String(metadata.backup_id),
       filename: metadata.archive_filename || path.basename(zipPath),
-      archive_size_bytes: fs.statSync(zipPath).size,
+      archive_size_bytes: scan.archiveSizeBytes,
+      expanded_size_bytes: scan.expandedSizeBytes,
       database_id: metadata.database_id || null,
       snapshot_schema_version: null,
       snapshot_database_id: null,
@@ -978,8 +1047,7 @@ async function inspectManagedBackupArchive(zipPath) {
 
     let snapshotInfo = null;
     if (hasDatabaseSnapshot) {
-      const stagedDbPath = path.join(tempRoot, DB_NAME);
-      fs.writeFileSync(stagedDbPath, await zip.file("database/auction.db").async("nodebuffer"));
+      const stagedDbPath = path.join(tempRoot, "database", "auction.db");
       snapshotInfo = readSqliteSnapshotMetadata(stagedDbPath);
       preview.snapshot_schema_version = snapshotInfo.schemaVersion || null;
       preview.snapshot_database_id = snapshotInfo.databaseId || null;
@@ -1070,6 +1138,20 @@ function requireManageUsers(req, res, next) {
   }
 
   logFromRequest(req, logLevels.WARN, `Rejected user-management access for ${req.user?.username || 'unknown'} without manage_users permission`);
+  return res.status(403).json({ error: "Unauthorized" });
+}
+
+function requireRestoreDatabase(req, res, next) {
+  const actor = getCurrentRequestUser(req) || req.user;
+  if (Array.isArray(actor?.permissions) && actor.permissions.includes("restore_database")) {
+    return next();
+  }
+
+  logFromRequest(
+    req,
+    logLevels.WARN,
+    `Rejected backup transfer/restore access for ${req.user?.username || "unknown"} without restore_database permission`
+  );
   return res.status(403).json({ error: "Unauthorized" });
 }
 
@@ -1382,6 +1464,21 @@ router.post("/backup", async (req, res) => {
       },
       auctions
     };
+    const payloadFiles = [snapshot, ...photoFiles, ...resourceImages, ...configFiles];
+    const oversizedPayload = payloadFiles.find((file) => Number(file.size_bytes || 0) > BACKUP_ARCHIVE_MAX_ENTRY_BYTES);
+    if (oversizedPayload) {
+      throw new Error("Backup contains a file that exceeds the configured per-entry archive limit.");
+    }
+    const expandedPayloadBytes = payloadFiles.reduce(
+      (total, file) => total + Number(file.size_bytes || 0),
+      Buffer.byteLength(JSON.stringify(metadata)) + Buffer.byteLength(backupLog.toString())
+    );
+    if (expandedPayloadBytes > BACKUP_ARCHIVE_MAX_EXPANDED_BYTES) {
+      throw new Error("Backup contents exceed the configured expanded archive limit.");
+    }
+    if (payloadFiles.length + 2 > BACKUP_ARCHIVE_MAX_ENTRIES) {
+      throw new Error("Backup contents exceed the configured archive entry limit.");
+    }
 
     await new Promise((resolve, reject) => {
       const output = fs.createWriteStream(archivePath);
@@ -1416,6 +1513,9 @@ router.post("/backup", async (req, res) => {
     });
 
     const archiveSize = fs.statSync(archivePath).size;
+    if (archiveSize > BACKUP_UPLOAD_MAX_BYTES) {
+      throw new Error("Backup archive exceeds the configured compressed archive limit.");
+    }
     backupLog.info(`Managed backup complete (${archiveSize} bytes)`);
     const sidecarMetadata = {
       ...metadata,
@@ -1460,7 +1560,7 @@ router.get("/backups", (req, res) => {
   }
 });
 
-router.get("/backups/:backupId/download", (req, res) => {
+router.get("/backups/:backupId/download", requireRestoreDatabase, (req, res) => {
   try {
     const backup = readManagedBackupRecord(req.params.backupId);
     if (!backup) {
@@ -1510,7 +1610,7 @@ router.delete("/backups/:backupId", (req, res) => {
   }
 });
 
-router.post("/backups/import/inspect", async (req, res) => {
+router.post("/backups/import/inspect", requireRestoreDatabase, async (req, res) => {
   let uploadedFilePath = null;
   let importToken = null;
   try {
@@ -1543,6 +1643,9 @@ router.post("/backups/import/inspect", async (req, res) => {
       ...inspection
     });
   } catch (err) {
+    if (!uploadedFilePath && req.file?.path) {
+      uploadedFilePath = req.file.path;
+    }
     if (uploadedFilePath) {
       fs.rmSync(uploadedFilePath, { force: true });
     }
@@ -1552,11 +1655,12 @@ router.post("/backups/import/inspect", async (req, res) => {
       fs.rmSync(importPaths.metadataPath, { force: true });
     }
     logFromRequest(req, logLevels.ERROR, `Managed backup import inspect failed: ${err.message}`);
-    return res.status(400).json({ error: err.message || "Failed to inspect backup archive." });
+    const status = err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE" ? 413 : 400;
+    return res.status(status).json({ error: err.message || "Failed to inspect backup archive." });
   }
 });
 
-router.post("/backups/import/confirm", async (req, res) => {
+router.post("/backups/import/confirm", requireRestoreDatabase, async (req, res) => {
   let archivePath = null;
   let sidecarPath = null;
   try {
@@ -1613,10 +1717,10 @@ async function restoreManagedBackup(backup, selection, req) {
   const restoreLog = createOperationLog();
   const operationId = `${backup.backup_id}_${Date.now()}`;
   const tempRoot = fs.mkdtempSync(path.join(BACKUP_DIR, `managed-restore-${operationId}-`));
-  const stagedDbPath = path.join(tempRoot, "database", DB_NAME);
+  const stagedDbPath = path.join(tempRoot, "database", "auction.db");
   const stagedPhotosDir = path.join(tempRoot, "photos");
-  const stagedResourcesDir = path.join(tempRoot, "resources-images");
-  const stagedConfigDir = path.join(tempRoot, "resources-config");
+  const stagedResourcesDir = path.join(tempRoot, "resources", "images");
+  const stagedConfigDir = path.join(tempRoot, "resources", "config");
   const liveDbPath = path.join(DB_PATH, DB_NAME);
   const liveWalPath = `${liveDbPath}-wal`;
   const liveShmPath = `${liveDbPath}-shm`;
@@ -1633,25 +1737,32 @@ async function restoreManagedBackup(backup, selection, req) {
   restoreLog.info(`Restore selection: db=${selection.restoreDb}, photos=${selection.restorePhotos}, resources=${selection.restoreResources}`);
 
   try {
-    const zip = await JSZip.loadAsync(fs.readFileSync(backup.archive_path));
-    const metadataEntry = zip.file("metadata.json");
-    if (!metadataEntry) {
+    const extractedEntries = new Set();
+    await processZipArchive(backup.archive_path, getManagedBackupArchiveOptions((entryName) => {
+      const shouldExtract = entryName === "metadata.json"
+        || (selection.restoreDb && entryName === "database/auction.db")
+        || (selection.restorePhotos && entryName.startsWith("photos/"))
+        || (selection.restoreResources && entryName.startsWith("resources/"));
+      if (!shouldExtract) return null;
+      extractedEntries.add(entryName);
+      return getStagedArchiveEntryPath(tempRoot, entryName);
+    }));
+
+    const metadataPath = path.join(tempRoot, "metadata.json");
+    if (!fs.existsSync(metadataPath)) {
       throw new Error("Backup archive is missing metadata.json.");
     }
 
-    const archiveMetadata = validateManagedBackupMetadata(JSON.parse(await metadataEntry.async("string")));
+    const archiveMetadata = validateManagedBackupMetadata(JSON.parse(fs.readFileSync(metadataPath, "utf8")));
     if (String(archiveMetadata.backup_id) !== String(backup.archive_backup_id || backup.backup_id)) {
       throw new Error("Backup archive metadata does not match the selected backup.");
     }
 
     if (selection.restoreDb) {
-      const dbEntry = zip.file("database/auction.db");
-      if (!dbEntry) {
+      if (!extractedEntries.has("database/auction.db")) {
         throw new Error("Backup archive is missing the database snapshot.");
       }
 
-      ensureDirectory(path.dirname(stagedDbPath));
-      fs.writeFileSync(stagedDbPath, await dbEntry.async("nodebuffer"));
       const validation = validateSqliteSnapshot(stagedDbPath, {
         expectedSchemaVersion: String(db.schemaVersion),
         allowSameMajor: true
@@ -1664,15 +1775,12 @@ async function restoreManagedBackup(backup, selection, req) {
 
     if (selection.restorePhotos) {
       ensureDirectory(stagedPhotosDir);
-      await extractZipPrefixToDirectory(zip, "photos/", stagedPhotosDir);
       restoreLog.info("Staged photo payload extracted");
     }
 
     if (selection.restoreResources) {
       ensureDirectory(stagedResourcesDir);
       ensureDirectory(stagedConfigDir);
-      await extractZipPrefixToDirectory(zip, "resources/images/", stagedResourcesDir);
-      await extractZipPrefixToDirectory(zip, "resources/config/", stagedConfigDir);
 
       for (const configFile of RESOURCE_CONFIG_BACKUP_PATHS) {
         const stagedPath = path.join(stagedConfigDir, configFile.filename);
@@ -1831,7 +1939,7 @@ async function restoreManagedBackup(backup, selection, req) {
   }
 }
 
-router.post("/backups/:backupId/restore", async (req, res) => {
+router.post("/backups/:backupId/restore", requireRestoreDatabase, async (req, res) => {
   try {
     const backup = readManagedBackupRecord(req.params.backupId);
     if (!backup) {
@@ -3384,83 +3492,79 @@ router.post("/auctions/list", async (req, res) => {
 
 
 router.post("/resources/upload", async (req, res) => {
-
-try {
-
-        await awaitMiddleware(upload.array("images", MAX_UPLOADS))(req, res);
-
-  if (!req.files || req.files.length === 0) {
-    logFromRequest(req, logLevels.ERROR, `No files uploaded`);
-    return res.status(400).json({ error: "No files uploaded" });
-  }
-
-  const currentFiles = fs.readdirSync(CONFIG_IMG_DIR).filter(f =>
-    allowedExtensions.includes(path.extname(f).toLowerCase())
-  );
-
-  const remainingSlots = MAX_UPLOADS - currentFiles.length;
-  if (remainingSlots <= 0) {
-    logFromRequest(req, logLevels.ERROR, `Upload rejected: Max image resources reached (${MAX_UPLOADS}).`);
-    return res.status(400).json({ error: "Maximum number of image resources already stored." });
-  }
-
-  const incoming = req.files.slice(0, remainingSlots);
-  const rejected = req.files.slice(remainingSlots);
-
-  const savedFiles = [];
-
-  for (const file of incoming) {
-
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (!allowedExtensions.includes(ext)) {
-      logFromRequest(req, logLevels.WARN, `Rejected file "${file.originalname}": invalid ext`);
-
-      fs.unlinkSync(file.path);
-      continue;
+  const temporaryPaths = new Set();
+  try {
+    await awaitMiddleware(upload.array("images", RESOURCE_UPLOAD_MAX_FILES))(req, res);
+    for (const file of req.files || []) {
+      if (file?.path) temporaryPaths.add(file.path);
     }
 
-    // Step 2: Content validation using sharp
-    let isValidImage = true;
-    try {
-      await sharp(file.path).metadata(); // throws if not a valid image
-    } catch (err) {
-      console.warn(`Rejected file "${file.originalname}": invalid image`);
-      logFromRequest(req, logLevels.WARN, `Rejected file "${file.originalname}": invalid image`);
-
-      fs.unlinkSync(file.path);
-      isValidImage = false;
-    }
-    if (!isValidImage) continue;
-
-    const safeName = file.originalname.replace(/[^a-z0-9_\-.]/gi, "_");
-    const destPath = path.join(CONFIG_IMG_DIR, safeName);
-    if (!destPath.startsWith(CONFIG_IMG_DIR)) {
-      fs.unlinkSync(file.path);
-      continue;
+    if (!req.files || req.files.length === 0) {
+      logFromRequest(req, logLevels.ERROR, "No files uploaded");
+      return res.status(400).json({ error: "No files uploaded" });
     }
 
-    fs.renameSync(file.path, destPath);
-    savedFiles.push(safeName);
-  }
+    const currentFiles = fs.readdirSync(CONFIG_IMG_DIR).filter((filename) =>
+      allowedExtensions.includes(path.extname(filename).toLowerCase())
+    );
+    const remainingSlots = MAX_UPLOADS - currentFiles.length;
+    if (remainingSlots <= 0) {
+      logFromRequest(req, logLevels.ERROR, `Upload rejected: Max image resources reached (${MAX_UPLOADS}).`);
+      return res.status(400).json({ error: "Maximum number of image resources already stored." });
+    }
 
-  // Clean up any rejected files
-  for (const file of rejected) {
-    fs.unlinkSync(file.path);
-  }
+    const incoming = req.files.slice(0, remainingSlots);
+    const rejected = req.files.slice(remainingSlots);
+    const savedFiles = [];
 
-  res.json({
-    message: `Uploaded ${savedFiles.length} file(s).`,
-    saved: savedFiles,
-    rejected: rejected.map(f => f.originalname)
-  });
-  if (savedFiles.length > 0) {
-    logFromRequest(req, logLevels.INFO, `Uploaded ${savedFiles.length} image resource(s): ${savedFiles.join(", ")}`);
-  }
-  } catch {
-          logFromRequest(req, logLevels.ERROR, "Error editing: " + err.message);
-        res.status(500).json({ error: err.message });
+    for (const file of incoming) {
+      try {
+        const metadata = await sharp(file.path).metadata();
+        if (!["jpeg", "png"].includes(String(metadata.format || "").toLowerCase())) {
+          throw new Error("Unsupported image content.");
+        }
+      } catch (_error) {
+        logFromRequest(req, logLevels.WARN, `Rejected resource image "${file.originalname}": invalid image content`);
+        continue;
+      }
 
-  
+      const safeName = file.originalname.replace(/[^a-z0-9_\-.]/gi, "_");
+      const destPath = safeResolveWithin(CONFIG_IMG_DIR, safeName);
+      fs.renameSync(file.path, destPath);
+      temporaryPaths.delete(file.path);
+      savedFiles.push(safeName);
+    }
+
+    if (savedFiles.length === 0) {
+      return res.status(400).json({
+        error: "No valid resource images were uploaded.",
+        rejected: req.files.map((file) => file.originalname)
+      });
+    }
+
+    res.json({
+      message: `Uploaded ${savedFiles.length} file(s).`,
+      saved: savedFiles,
+      rejected: rejected.map((file) => file.originalname)
+    });
+    if (savedFiles.length > 0) {
+      logFromRequest(req, logLevels.INFO, `Uploaded ${savedFiles.length} image resource(s): ${savedFiles.join(", ")}`);
+    }
+  } catch (err) {
+    for (const file of req.files || []) {
+      if (file?.path) temporaryPaths.add(file.path);
+    }
+    logFromRequest(req, logLevels.ERROR, `Resource upload failed: ${err.message}`);
+    const status = err instanceof multer.MulterError
+      ? (err.code === "LIMIT_FILE_SIZE" ? 413 : 400)
+      : 500;
+    return res.status(status).json({
+      error: err instanceof multer.MulterError ? err.message : "Failed to upload resource images."
+    });
+  } finally {
+    for (const temporaryPath of temporaryPaths) {
+      fs.rmSync(temporaryPath, { force: true });
+    }
   }
 });
 
