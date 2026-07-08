@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-view-key="cashier" data-access-role="cashier" data-message-poll-ms="10000" data-message-auction-select="auction-select" data-asset-version="2026-07-02-poll-1">
+<html lang="en" data-view-key="cashier" data-access-role="cashier" data-message-poll-ms="10000" data-message-auction-select="auction-select" data-asset-version="2026-07-08-sumup-pending-1">
 <head>
   <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
@@ -121,6 +121,7 @@
                 </div>
               </div>
               <div class="panel-body">
+                <div id="auctionPendingPayments" class="pending-payments-panel pending-payments-panel-compact" hidden></div>
                 <div class="table-wrap">
                   <table id="bidderTable">
                     <thead>
@@ -182,6 +183,7 @@
                       <button class="payment-button" data-method="sumup-indirect" type="button" hidden>SumUp (via android)</button>
                     </div>
                     <div id="paymentStateHint" class="payment-state-hint" hidden></div>
+                    <div id="bidderPendingPayments" class="pending-payments-panel" hidden></div>
 
                     <div class="receipt-actions">
                       <button id="printReceiptBtn" class="secondary-button" type="button">Print receipt</button>

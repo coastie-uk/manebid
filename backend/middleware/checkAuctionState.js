@@ -148,7 +148,7 @@ const db = require('../db');
         }
 
         /* 7️⃣ All good – stash auction for downstream handlers and continue */
-        logFromRequest(req, logLevels.DEBUG, `CAS: State check passed for auction #${auctionId} (state ${currentState})`);
+      //  logFromRequest(req, logLevels.DEBUG, `CAS: State check passed for auction #${auctionId} (state ${currentState})`);
 
 
         req.auction = auction;

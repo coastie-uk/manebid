@@ -109,6 +109,10 @@ const testData = {
   auction2ShortName: null,
   auction2Item1: null,
   auction2BidderId: null,
+  auction2HostedBidderId: null,
+  auction2FailBidderId: null,
+  auction2DonationBidderId: null,
+  auction2CancelBidderId: null,
   moveAuctionId: null,
   moveAuctionShortName: null,
   moveItemSuccess: null,
@@ -1293,6 +1297,38 @@ addTest("P-047","setup: create secondary auction for isolation tests", async () 
 
    await setAuctionStatusFor(testData.auction2Id, "setup");
   testData.auction2Item1 = await createItem(testData.auction2PublicId, "Phase1 Isolation Item 1");
+
+  const hostedBidder = await fetchJson(`${baseUrl}/auctions/${testData.auction2Id}/bidders`, {
+    method: "POST",
+    headers: authHeaders(tokens.cashier, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ paddle_number: 556, name: "SumUp Hosted Donation" })
+  });
+  await expectStatus(hostedBidder.res, 201);
+  testData.auction2HostedBidderId = hostedBidder.json.bidder.id;
+
+  const failBidder = await fetchJson(`${baseUrl}/auctions/${testData.auction2Id}/bidders`, {
+    method: "POST",
+    headers: authHeaders(tokens.cashier, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ paddle_number: 557, name: "SumUp Fail Donation" })
+  });
+  await expectStatus(failBidder.res, 201);
+  testData.auction2FailBidderId = failBidder.json.bidder.id;
+
+  const donationBidder = await fetchJson(`${baseUrl}/auctions/${testData.auction2Id}/bidders`, {
+    method: "POST",
+    headers: authHeaders(tokens.cashier, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ paddle_number: 558, name: "SumUp Donation Only" })
+  });
+  await expectStatus(donationBidder.res, 201);
+  testData.auction2DonationBidderId = donationBidder.json.bidder.id;
+
+  const cancelBidder = await fetchJson(`${baseUrl}/auctions/${testData.auction2Id}/bidders`, {
+    method: "POST",
+    headers: authHeaders(tokens.cashier, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ paddle_number: 559, name: "SumUp Cancel Test" })
+  });
+  await expectStatus(cancelBidder.res, 201);
+  testData.auction2CancelBidderId = cancelBidder.json.bidder.id;
 });
 
 addTest("P-048","finalize same paddle in two auctions", async () => {
@@ -1533,6 +1569,26 @@ addTest("P-051","payments setup: bidder and settlement state", async () => {
   testData.sumupAuctionId = testData.auction2Id;
   testData.sumupStartingPaymentsTotal = bidder.json.payments_total;
   testData.sumupOutstandingMinor = Math.max(0, Math.round((bidder.json.balance || 0) * 100));
+
+  const hostedBidder = await fetchJson(`${baseUrl}/settlement/bidders/${testData.auction2HostedBidderId}?auction_id=${testData.auction2Id}`, {
+    headers: authHeaders(context.token)
+  });
+  await expectStatus(hostedBidder.res, 200);
+
+  const failBidder = await fetchJson(`${baseUrl}/settlement/bidders/${testData.auction2FailBidderId}?auction_id=${testData.auction2Id}`, {
+    headers: authHeaders(context.token)
+  });
+  await expectStatus(failBidder.res, 200);
+
+  const donationBidder = await fetchJson(`${baseUrl}/settlement/bidders/${testData.auction2DonationBidderId}?auction_id=${testData.auction2Id}`, {
+    headers: authHeaders(context.token)
+  });
+  await expectStatus(donationBidder.res, 200);
+
+  const cancelBidder = await fetchJson(`${baseUrl}/settlement/bidders/${testData.auction2CancelBidderId}?auction_id=${testData.auction2Id}`, {
+    headers: authHeaders(context.token)
+  });
+  await expectStatus(cancelBidder.res, 200);
 });
 
 addTest("P-051a","POST /settlement/payment/:auctionId bidder mismatch no payment", async () => {
@@ -1646,18 +1702,119 @@ addTest("P-054","POST /payments/intents success", async () => {
   testData.sumupAmountMinor = amountMinor;
 });
 
-addTest("P-054b","POST /payments/intents hosted channel coverage", async () => {
-  if (testData.sumupOutstandingMinor < 1) {
-    return skipTest("No outstanding balance available for SumUp hosted intent tests.");
+addTest("P-054a1","POST /payments/intents blocks duplicate pending SumUp intent for bidder", async () => {
+  if (!testData.sumupIntentId) {
+    return skipTest("No SumUp intent available.");
   }
-  const amountMinor = Math.min(testData.sumupOutstandingMinor, 200);
-  const { res, json, text } = await fetchJson(`${baseUrl}/payments/intents`, {
+  const amountMinor = Math.min(testData.sumupOutstandingMinor, 100);
+  const { res, json } = await fetchJson(`${baseUrl}/payments/intents`, {
     method: "POST",
     headers: authHeaders(context.token, { "Content-Type": "application/json" }),
     body: JSON.stringify({
       auction_id: testData.sumupAuctionId,
       bidder_id: testData.sumupBidderId,
       amount_minor: amountMinor,
+      channel: "app",
+      note: "phase1 duplicate sumup intent"
+    })
+  });
+  await expectStatus(res, 409);
+  assert.equal(json?.error, "pending_sumup_intent");
+  assert.equal(json?.pending_intent?.intent_id, testData.sumupIntentId);
+  assert.equal(json?.pending_intent?.status, "pending");
+});
+
+addTest("P-054a2","GET /payments/intents/pending/:auctionId lists pending intents for auction", async () => {
+  if (!testData.sumupIntentId) {
+    return skipTest("No SumUp intent available.");
+  }
+  const { res, json } = await fetchJson(`${baseUrl}/payments/intents/pending/${testData.sumupAuctionId}`, {
+    headers: authHeaders(context.token)
+  });
+  await expectStatus(res, 200);
+  assert.ok(Array.isArray(json?.intents), "Missing pending intents array");
+  const pending = json.intents.find(intent => intent.intent_id === testData.sumupIntentId);
+  assert.ok(pending, "Expected SumUp intent in pending list");
+  assert.equal(pending.bidder_id, testData.sumupBidderId);
+  assert.equal(pending.status, "pending");
+  assert.ok(pending.created_at, "Expected created_at in pending intent");
+  assert.ok(pending.expires_at, "Expected expires_at in pending intent");
+
+  const otherAuction = await fetchJson(`${baseUrl}/payments/intents/pending/${testData.auctionId}`, {
+    headers: authHeaders(context.token)
+  });
+  await expectStatus(otherAuction.res, 200);
+  assert.ok(!otherAuction.json.intents.some(intent => intent.intent_id === testData.sumupIntentId), "Intent leaked into another auction pending list");
+});
+
+addTest("P-054a3","POST /payments/intents/cancel/:auctionId/:intentId cancels pending intent and unlocks bidder", async () => {
+  if (!testData.auction2CancelBidderId) {
+    return skipTest("No SumUp cancel bidder available.");
+  }
+  const create = await fetchJson(`${baseUrl}/payments/intents`, {
+    method: "POST",
+    headers: authHeaders(context.token, { "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      auction_id: testData.sumupAuctionId,
+      bidder_id: testData.auction2CancelBidderId,
+      amount_minor: 0,
+      donation_minor: 200,
+      channel: "app",
+      note: "phase1 sumup cancel intent"
+    })
+  });
+  await expectStatus(create.res, 201);
+  const intentId = create.json.intent_id;
+
+  const missingCsrf = await fetch(`${baseUrl}/payments/intents/cancel/${testData.sumupAuctionId}/${intentId}`, {
+    method: "POST",
+    headers: { Cookie: context.token.cookie }
+  });
+  await expectStatus(missingCsrf, 403);
+
+  const cancel = await fetchJson(`${baseUrl}/payments/intents/cancel/${testData.sumupAuctionId}/${intentId}`, {
+    method: "POST",
+    headers: authHeaders(context.token)
+  });
+  await expectStatus(cancel.res, 200);
+  assert.equal(cancel.json?.intent_id, intentId);
+  assert.equal(cancel.json?.status, "cancelled");
+
+  const list = await fetchJson(`${baseUrl}/payments/intents/pending/${testData.sumupAuctionId}`, {
+    headers: authHeaders(context.token)
+  });
+  await expectStatus(list.res, 200);
+  assert.ok(!list.json.intents.some(intent => intent.intent_id === intentId), "Cancelled intent still appears in pending list");
+
+  const replacement = await fetchJson(`${baseUrl}/payments/intents`, {
+    method: "POST",
+    headers: authHeaders(context.token, { "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      auction_id: testData.sumupAuctionId,
+      bidder_id: testData.auction2CancelBidderId,
+      amount_minor: 0,
+      donation_minor: 100,
+      channel: "app",
+      note: "phase1 sumup replacement after cancel"
+    })
+  });
+  await expectStatus(replacement.res, 201);
+  assert.ok(replacement.json?.intent_id, "Expected replacement intent after cancellation");
+});
+
+addTest("P-054b","POST /payments/intents hosted channel coverage", async () => {
+  if (!testData.auction2HostedBidderId) {
+    return skipTest("No hosted SumUp bidder available.");
+  }
+  const donationMinor = 200;
+  const { res, json, text } = await fetchJson(`${baseUrl}/payments/intents`, {
+    method: "POST",
+    headers: authHeaders(context.token, { "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      auction_id: testData.sumupAuctionId,
+      bidder_id: testData.auction2HostedBidderId,
+      amount_minor: 0,
+      donation_minor: donationMinor,
       channel: "hosted",
       note: "phase1 sumup hosted intent"
     })
@@ -1667,6 +1824,7 @@ addTest("P-054b","POST /payments/intents hosted channel coverage", async () => {
   }
   await expectStatus(res, 201);
   assert.ok(json && json.intent_id, `Missing hosted intent id: ${text}`);
+  assert.equal(json.donation_minor, donationMinor);
   testData.sumupHostedIntentId = json.intent_id;
 });
 
@@ -1681,6 +1839,7 @@ addTest("P-054c","GET /payments/intents/:id success hosted intent", async () => 
   assert.equal(json.intent_id, testData.sumupHostedIntentId);
   assert.equal(json.channel, "hosted");
   assert.equal(json.status, "pending");
+  assert.ok(json.hosted_link, "Expected hosted link for pending hosted intent");
 });
 
 addTest("P-054d","public SumUp callback cannot fail or finalize an intent without provider verification", async () => {
@@ -1875,39 +2034,47 @@ addTest("P-065","GET /payments/sumup/callback/success missing foreign id no paym
 
 
 
-addTest("P-066","GET /payments/sumup/callback/fail leaves intent pending without provider confirmation", async () => {
+addTest("P-066","GET /payments/sumup/callback/fail marks app intent failed without recording payment", async () => {
   await setAuctionStatusFor(testData.sumupAuctionId, "settlement");
-  const amountMinor = Math.min(testData.sumupOutstandingMinor, 1000);
-  if (amountMinor < 1) {
-    return skipTest("No outstanding balance available for SumUp intent tests.");
+  if (!testData.auction2FailBidderId) {
+    return skipTest("No SumUp fail bidder available.");
   }
   const create = await fetchJson(`${baseUrl}/payments/intents`, {
     method: "POST",
     headers: authHeaders(context.token, { "Content-Type": "application/json" }),
     body: JSON.stringify({
       auction_id: testData.sumupAuctionId,
-      bidder_id: testData.sumupBidderId,
-      amount_minor: amountMinor,
+      bidder_id: testData.auction2FailBidderId,
+      amount_minor: 0,
+      donation_minor: 200,
       channel: "app",
       note: "phase1 sumup fail intent"
     })
   });
   await expectStatus(create.res, 201);
   testData.sumupFailIntentId = create.json.intent_id;
-  const before = await getBidderSummary(testData.sumupAuctionId, testData.sumupBidderId);
+  const before = await getBidderSummary(testData.sumupAuctionId, testData.auction2FailBidderId);
 
   const res = await fetch(
-    `${baseUrl}/payments/sumup/callback/fail?status=failed&foreign-tx-id=${testData.sumupFailIntentId}`,
+    `${baseUrl}/payments/sumup/callback/fail?smp-status-failed&foreign-tx-id=${testData.sumupFailIntentId}`,
     { redirect: "manual" }
   );
   await expectStatus(res, 303);
+  assert.equal(res.headers.get("location"), "/cashier/sumup-result.html?status=failed");
 
   const check = await fetchJson(`${baseUrl}/payments/intents/${testData.sumupFailIntentId}`, {
     headers: authHeaders(context.token)
   });
   await expectStatus(check.res, 200);
-  assert.equal(check.json.status, "pending");
-  const after = await getBidderSummary(testData.sumupAuctionId, testData.sumupBidderId);
+  assert.equal(check.json.status, "failed");
+
+  const pendingList = await fetchJson(`${baseUrl}/payments/intents/pending/${testData.sumupAuctionId}`, {
+    headers: authHeaders(context.token)
+  });
+  await expectStatus(pendingList.res, 200);
+  assert.ok(!pendingList.json.intents.some(intent => intent.intent_id === testData.sumupFailIntentId), "Failed app intent still appears pending");
+
+  const after = await getBidderSummary(testData.sumupAuctionId, testData.auction2FailBidderId);
   assert.equal(after.payments_total, before.payments_total);
 });
 
@@ -1948,19 +2115,18 @@ addTest("P-069","GET /payments/sumup/callback/success duplicate no payment", asy
 });
 
 addTest("P-069a","GET /payments/sumup/callback/success cannot finalize donation without provider confirmation", async () => {
-  const before = await getBidderSummary(testData.sumupAuctionId, testData.sumupBidderId);
-  const outstandingMinor = Math.max(0, Math.round((before.balance || 0) * 100));
-  if (outstandingMinor < 1) {
-    return skipTest("No outstanding balance available for SumUp donation finalization.");
+  if (!testData.auction2DonationBidderId) {
+    return skipTest("No SumUp donation bidder available.");
   }
+  const before = await getBidderSummary(testData.sumupAuctionId, testData.auction2DonationBidderId);
 
   const create = await fetchJson(`${baseUrl}/payments/intents`, {
     method: "POST",
     headers: authHeaders(context.token, { "Content-Type": "application/json" }),
     body: JSON.stringify({
       auction_id: testData.sumupAuctionId,
-      bidder_id: testData.sumupBidderId,
-      amount_minor: outstandingMinor,
+      bidder_id: testData.auction2DonationBidderId,
+      amount_minor: 0,
       donation_minor: 250,
       channel: "app",
       note: "phase1 sumup donation"
@@ -1979,7 +2145,7 @@ addTest("P-069a","GET /payments/sumup/callback/success cannot finalize donation 
   });
   assert.equal(intent.json.status, "pending");
 
-  const after = await getBidderSummary(testData.sumupAuctionId, testData.sumupBidderId);
+  const after = await getBidderSummary(testData.sumupAuctionId, testData.auction2DonationBidderId);
   assert.equal(after.balance, before.balance);
   assert.equal(after.payments_total, before.payments_total);
   assert.equal(after.donations_total, before.donations_total);

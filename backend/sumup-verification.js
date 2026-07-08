@@ -17,7 +17,11 @@ function appTransactionMismatches(
   { merchantCode, expectedTransactionCode = null } = {}
 ) {
   const mismatches = [];
-  if (String(transaction?.foreign_transaction_id || '') !== String(intent?.intent_id || '')) {
+  const providerForeignTransactionId = String(transaction?.foreign_transaction_id || '');
+  if (providerForeignTransactionId && providerForeignTransactionId !== String(intent?.intent_id || '')) {
+    mismatches.push('foreign_transaction_id');
+  }
+  if (!providerForeignTransactionId && !expectedTransactionCode) {
     mismatches.push('foreign_transaction_id');
   }
   if (String(transaction?.merchant_code || '') !== String(merchantCode || '')) {

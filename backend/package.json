@@ -1,6 +1,6 @@
 {
     "name": "manebid-backend",
-    "version": "3.0.2-dev07-s2",
+    "version": "3.0.2-dev07-s3",
     "description": "Backend for ManeBid — Convention Auction Manager",
     "main": "backend.js",
     "scripts": {

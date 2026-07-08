@@ -404,6 +404,149 @@ tbody tr:first-child td {
   color: #6f5815;
 }
 
+.pending-payments-panel {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid #e3d49c;
+  border-radius: 8px;
+  background: #fffaf0;
+  color: #3d3120;
+  transition: box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.pending-payments-panel-compact {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.pending-payments-panel-highlight {
+  border-color: #b7791f;
+  box-shadow: 0 0 0 3px rgba(183, 121, 31, 0.22);
+}
+
+.pending-payments-heading,
+.pending-payment-card-main {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.pending-payments-heading {
+  align-items: center;
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+
+.pending-payments-heading strong,
+.pending-bidder-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #b7791f;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pending-payment-list {
+  display: grid;
+  gap: 6px;
+}
+
+.pending-payment-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.88rem;
+}
+
+.pending-payment-link {
+  border: 0;
+  background: transparent;
+  color: #24436b;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 0;
+  text-align: left;
+  text-decoration: underline;
+}
+
+.pending-payment-card + .pending-payment-card {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #ead384;
+}
+
+.pending-payment-title {
+  font-weight: 700;
+}
+
+.pending-payment-meta,
+.pending-payment-status,
+.sumup-waiting-meta,
+.sumup-waiting-status,
+.sumup-waiting-elapsed {
+  color: #5f6b7a;
+  font-size: 0.9rem;
+}
+
+.pending-payment-status {
+  margin-top: 4px;
+}
+
+.pending-payment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pending-bidder-badge {
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.sumup-waiting-card {
+  width: min(100%, 420px);
+  text-align: center;
+}
+
+.sumup-spinner {
+  width: 42px;
+  height: 42px;
+  margin: 2px auto 14px;
+  border: 4px solid #d8dee6;
+  border-top-color: #0f62fe;
+  border-radius: 50%;
+  animation: sumup-spin 0.9s linear infinite;
+}
+
+.sumup-waiting-amount {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.sumup-waiting-status {
+  margin: 12px 0 4px;
+}
+
+.sumup-waiting-elapsed {
+  margin-bottom: 4px;
+}
+
+@keyframes sumup-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .modal-input:disabled {
   background: #eef3f8;
   color: #5f6b7a;
@@ -778,6 +921,16 @@ body.buyer-display-page {
     padding-left: 8px;
     padding-right: 8px;
   }
+
+  .pending-payment-card-main,
+  .pending-payment-row {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .pending-payment-actions {
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 480px) {
@@ -949,6 +1102,39 @@ body.buyer-display-page {
   background: #2b2612;
   border-color: #6f5b1f;
   color: #f2d479;
+}
+
+:root[data-theme="dark"] .pending-payments-panel {
+  background: #2b2612;
+  border-color: #6f5b1f;
+  color: #f7e2a3;
+}
+
+:root[data-theme="dark"] .pending-payments-heading strong,
+:root[data-theme="dark"] .pending-bidder-badge {
+  background: #a66d18;
+  color: #fff;
+}
+
+:root[data-theme="dark"] .pending-payment-link {
+  color: #9ec6ff;
+}
+
+:root[data-theme="dark"] .pending-payment-card + .pending-payment-card {
+  border-color: #6f5b1f;
+}
+
+:root[data-theme="dark"] .pending-payment-meta,
+:root[data-theme="dark"] .pending-payment-status,
+:root[data-theme="dark"] .sumup-waiting-meta,
+:root[data-theme="dark"] .sumup-waiting-status,
+:root[data-theme="dark"] .sumup-waiting-elapsed {
+  color: var(--admin-muted);
+}
+
+:root[data-theme="dark"] .sumup-spinner {
+  border-color: #31425c;
+  border-top-color: #5f9fff;
 }
 
 :root[data-theme="dark"] .modal-overlay {

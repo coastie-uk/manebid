@@ -11,7 +11,7 @@ const path     = require('path');
 const fs       = require('fs');
 const crypto   = require('crypto');
 const { version: backendVersion = 'Unknown' } = require('./package.json');
-const schemaVersion = '3.0';
+const schemaVersion = '3.1';
 const { logLevels, log } = require('./logger');
 const bcrypt = require('bcryptjs');
 const { ROLE_LIST, PERMISSION_LIST, ROOT_USERNAME } = require('./auth-constants');
@@ -34,6 +34,9 @@ const {
 //      Adds users.session_invalid_before for remote session invalidation
 //      Adds users.preferences for persisted per-user UI preferences
 //      Adds soft-delete metadata to items
+// 3.1  Adds payment_intents.sumup_hosted_url for cashier pending-payment recovery
+//      Adds payment_intents.last_verification_state for retryable hosted checkout failures
+//      Adds payment_intents.sumup_transaction_code for delayed SumUp app verification
 
  
 
@@ -199,6 +202,9 @@ function createSchema() {
       channel TEXT NOT NULL DEFAULT 'app', -- 'app' (SumUp app) | 'hosted' (optional)
       status TEXT NOT NULL CHECK (status IN ('pending','succeeded','failed','expired','cancelled')),
       sumup_checkout_id TEXT,              -- only for hosted flow (optional)
+      sumup_hosted_url TEXT,               -- hosted checkout URL for cashier recovery
+      sumup_transaction_code TEXT,         -- app callback transaction code for delayed verification
+      last_verification_state TEXT,        -- last provider verification outcome while intent remains pending
       created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
       expires_at TEXT,
       note TEXT,
@@ -225,9 +231,24 @@ function migrateSchemaWithinV3(existingVersion) {
     return;
   }
 
-  // Placeholder for future 3.x migrations.
-  if (parsed.minor < 0) {
+  if (parsed.minor < parsedCurrentSchema.minor) {
     log('General', logLevels.INFO, 'Running 3.x schema migrations');
+    const intentColumns = db.prepare("PRAGMA table_info(payment_intents)").all();
+    const hasHostedUrl = intentColumns.some((column) => column.name === 'sumup_hosted_url');
+    if (!hasHostedUrl) {
+      db.exec("ALTER TABLE payment_intents ADD COLUMN sumup_hosted_url TEXT");
+      log('General', logLevels.INFO, 'Added payment_intents.sumup_hosted_url');
+    }
+    const hasLastVerificationState = intentColumns.some((column) => column.name === 'last_verification_state');
+    if (!hasLastVerificationState) {
+      db.exec("ALTER TABLE payment_intents ADD COLUMN last_verification_state TEXT");
+      log('General', logLevels.INFO, 'Added payment_intents.last_verification_state');
+    }
+    const hasTransactionCode = intentColumns.some((column) => column.name === 'sumup_transaction_code');
+    if (!hasTransactionCode) {
+      db.exec("ALTER TABLE payment_intents ADD COLUMN sumup_transaction_code TEXT");
+      log('General', logLevels.INFO, 'Added payment_intents.sumup_transaction_code');
+    }
 
     recordStartupAudit("Database migrated within v3", {
       method: "db.js migrateSchemaWithinV3",

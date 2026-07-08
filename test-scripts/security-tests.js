@@ -74,6 +74,14 @@ test("SumUp app transactions require authoritative matching fields", () => {
   };
   const options = { merchantCode: "merchant", expectedTransactionCode: "TX-1" };
   assert.equal(evaluateAppTransaction(intent, transaction, options).status, "succeeded");
+  assert.equal(
+    evaluateAppTransaction(intent, { ...transaction, foreign_transaction_id: "" }, options).status,
+    "succeeded"
+  );
+  assert.equal(
+    evaluateAppTransaction(intent, { ...transaction, foreign_transaction_id: "" }, { merchantCode: "merchant" }).verification_state,
+    "mismatch"
+  );
   for (const status of ["FAILED", "CANCELLED", "REFUNDED"]) {
     assert.equal(evaluateAppTransaction(intent, { ...transaction, status }, options).status, "failed");
   }
@@ -94,9 +102,14 @@ test("SumUp app transactions require authoritative matching fields", () => {
 });
 
 test("SumUp client queries transactions by foreign reference and handles provider errors", async () => {
-  const { getTransactionByForeignReference } = require(path.join(root, "backend/sumup-client.js"));
+  const {
+    getTransactionByForeignReference,
+    getTransactionByCode,
+    getTransactionHistoryByCode
+  } = require(path.join(root, "backend/sumup-client.js"));
   const transaction = {
     id: "provider-id",
+    transaction_code: "TX-CODE-1",
     foreign_transaction_id: "intent-id",
     status: "SUCCESSFUL"
   };
@@ -116,6 +129,45 @@ test("SumUp client queries transactions by foreign reference and handles provide
   assert.match(capturedUrl, /\/merchants\/merchant%2Fcode\/transactions\?foreign_transaction_id=intent-id$/);
   assert.equal(capturedOptions.method, "GET");
   assert.equal(capturedOptions.headers.Authorization, "Bearer test-key");
+  assert.equal(capturedOptions.headersTimeout, 5000);
+  assert.equal(capturedOptions.bodyTimeout, 10000);
+
+  const byCode = await getTransactionByCode({
+    request: async (url, options) => {
+      capturedUrl = url;
+      capturedOptions = options;
+      return { statusCode: 200, body: { json: async () => transaction } };
+    },
+    apiKey: "test-key",
+    merchantCode: "merchant/code",
+    transactionCode: "TX-CODE-1"
+  });
+  assert.deepEqual(byCode, transaction);
+  assert.match(capturedUrl, /\/merchants\/merchant%2Fcode\/transactions\?transaction_code=TX-CODE-1$/);
+
+  const historyTransaction = await getTransactionHistoryByCode({
+    request: async (url, options) => {
+      capturedUrl = url;
+      capturedOptions = options;
+      return {
+        statusCode: 200,
+        body: {
+          json: async () => ({
+            items: [
+              { transaction_code: "OTHER", transaction_id: "other-provider-id" },
+              { transaction_code: "TX-CODE-1", transaction_id: "history-provider-id", status: "SUCCESSFUL" }
+            ]
+          })
+        }
+      };
+    },
+    apiKey: "test-key",
+    merchantCode: "merchant/code",
+    transactionCode: "TX-CODE-1"
+  });
+  assert.equal(historyTransaction.id, "history-provider-id");
+  assert.equal(historyTransaction.merchant_code, "merchant/code");
+  assert.match(capturedUrl, /\/merchants\/merchant%2Fcode\/transactions\/history\?transaction_code=TX-CODE-1&limit=10&order=descending$/);
   assert.equal(capturedOptions.headersTimeout, 5000);
   assert.equal(capturedOptions.bodyTimeout, 10000);
 
@@ -263,12 +315,12 @@ test("upload, proxy, and dependency controls are configured", () => {
   const config = JSON.parse(read("backend/config.json"));
   assert.equal(config.HOST, "127.0.0.1");
   assert.deepEqual(config.TRUSTED_PROXIES, ["loopback", "192.168.0.254/32"]);
-  assert.equal(config.ITEM_PHOTO_MAX_BYTES, 10 * 1024 * 1024);
-  assert.equal(config.RESOURCE_IMAGE_MAX_BYTES, 10 * 1024 * 1024);
-  assert.equal(config.RESOURCE_UPLOAD_MAX_FILES, 20);
-  assert.equal(config.BACKUP_UPLOAD_MAX_BYTES, 512 * 1024 * 1024);
-  assert.equal(config.BACKUP_ARCHIVE_MAX_EXPANDED_BYTES, 2 * 1024 * 1024 * 1024);
-  assert.equal(config.BACKUP_ARCHIVE_MAX_ENTRY_BYTES, 512 * 1024 * 1024);
+  assert.equal(config.ITEM_PHOTO_MAX_MB, 10);
+  assert.equal(config.RESOURCE_IMAGE_MAX_MB, 10);
+  assert.equal(config.RESOURCE_UPLOAD_MAX_FILES, 50);
+  assert.equal(config.BACKUP_UPLOAD_MAX_MB, 512);
+  assert.equal(config.BACKUP_ARCHIVE_MAX_EXPANDED_MB, 2048);
+  assert.equal(config.BACKUP_ARCHIVE_MAX_ENTRY_MB, 512);
   assert.equal(config.BACKUP_ARCHIVE_MAX_ENTRIES, 10000);
   assert.equal(config.BACKUP_ARCHIVE_MAX_COMPRESSION_RATIO, undefined);
   const packageJson = JSON.parse(read("backend/package.json"));

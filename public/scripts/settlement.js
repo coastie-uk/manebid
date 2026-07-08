@@ -22,6 +22,8 @@ const API_ROOT = `${API}/settlement`;
   const lotsPreviewStripEl = document.getElementById('lotsPreviewStrip');
   const lotsSectionEl = document.getElementById('lotsSection');
   const paymentStateHintEl = document.getElementById('paymentStateHint');
+  const auctionPendingPaymentsEl = document.getElementById('auctionPendingPayments');
+  const bidderPendingPaymentsEl = document.getElementById('bidderPendingPayments');
   const titleEl    = document.getElementById('title');
   const fingerprintDisplay = document.getElementById('fingerprintDisplay');
   const toggleFingerprintBtn = document.getElementById('toggleFingerprintBtn');
@@ -30,12 +32,20 @@ const API_ROOT = `${API}/settlement`;
   const currencySymbol = localStorage.getItem("currencySymbol") || "£";
   const money = v => `${currencySymbol}${Number(v).toFixed(2)}`;
   const roundCurrency = value => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+  const moneyFromMinor = value => money(Number(value || 0) / 100);
   const uploadBase = "/api/uploads";
   let currentUsername = 'unknown';
   let fingerprintVisible = false;
   let fetchBiddersInFlight = false;
   let bidderListRenderKey = '';
   let selectedBidderRenderKey = '';
+  let pendingIntents = [];
+  let pendingRefreshInFlight = false;
+  let waitingModalEl = null;
+  let waitingModalIntentId = null;
+  let waitingModalStartedAt = 0;
+  let waitingModalTimer = null;
+  let waitingModalPollTimer = null;
   const receiptDateTime = value => new Date(value).toLocaleString('en-GB', {
     day: '2-digit',
     month: '2-digit',
@@ -581,6 +591,393 @@ buttons.forEach(btn => {
   }
 }
 
+  function isPendingIntentActive(intent) {
+    return intent?.status === 'pending';
+  }
+
+  function getPendingIntentsForBidder(bidderId) {
+    return pendingIntents.filter(intent => Number(intent.bidder_id) === Number(bidderId) && isPendingIntentActive(intent));
+  }
+
+  function getActivePendingIntentForBidder(bidderId) {
+    return getPendingIntentsForBidder(bidderId)[0] || null;
+  }
+
+  function getPendingStatusText(intent) {
+    if (!intent) return 'Waiting for SumUp confirmation.';
+    if (intent.status === 'succeeded') return 'Payment confirmed and recorded.';
+    if (intent.status === 'failed') return 'SumUp reported this payment as failed.';
+    if (intent.status === 'expired') return 'This payment request has expired.';
+    if (intent.verification_state === 'failed') {
+      return intent.channel === 'hosted' || intent.hosted_link
+        ? 'The last SumUp checkout attempt was declined. The checkout can be tried again.'
+        : 'SumUp reported this payment as failed.';
+    }
+    if (intent.verification_state === 'unavailable') return 'Verification is unavailable; the payment has not been recorded.';
+    if (intent.verification_state === 'mismatch') return 'SumUp details did not match this payment.';
+    if (intent.verification_state === 'not_found') return 'SumUp has not returned a matching transaction yet.';
+    return 'Waiting for SumUp confirmation.';
+  }
+
+  function formatPendingIntentAmount(intent) {
+    const donationMinor = Number(intent?.donation_minor || 0);
+    const grossMinor = Number(intent?.amount_minor || 0);
+    if (donationMinor > 0) {
+      return `${moneyFromMinor(grossMinor)} including ${moneyFromMinor(donationMinor)} donation`;
+    }
+    return moneyFromMinor(grossMinor);
+  }
+
+  function formatPendingIntentAge(intent) {
+    const createdAt = Date.parse(String(intent?.created_at || '').replace(' ', 'T'));
+    if (!Number.isFinite(createdAt)) return '';
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - createdAt) / 1000));
+    if (elapsedSeconds < 60) return `${elapsedSeconds}s ago`;
+    return `${Math.floor(elapsedSeconds / 60)}m ${elapsedSeconds % 60}s ago`;
+  }
+
+  function upsertPendingIntent(intent) {
+    if (!intent?.intent_id) return null;
+    const existingIndex = pendingIntents.findIndex(row => row.intent_id === intent.intent_id);
+    const merged = {
+      ...(existingIndex >= 0 ? pendingIntents[existingIndex] : {}),
+      ...intent
+    };
+    if (existingIndex >= 0) pendingIntents[existingIndex] = merged;
+    else pendingIntents.push(merged);
+    return merged;
+  }
+
+  function removePendingIntent(intentId) {
+    pendingIntents = pendingIntents.filter(intent => intent.intent_id !== intentId);
+  }
+
+  async function loadPendingIntents() {
+    if (pendingRefreshInFlight || AUCTION_STATUS !== 'settlement') return;
+    pendingRefreshInFlight = true;
+    try {
+      const response = await window.AppAuth.authenticatedFetch(`${API}/payments/intents/pending/${AUCTION_ID}`, {
+        headers: { "X-CSRF-Token": token }
+      });
+      if (!response.ok) throw new Error(`Pending payments refresh failed (${response.status})`);
+      const data = await response.json();
+      pendingIntents = Array.isArray(data?.intents) ? data.intents : [];
+      renderPendingPayments();
+      updateWaitingModal();
+    } catch (error) {
+      console.error('[payments] Pending payment refresh failed:', error);
+    } finally {
+      pendingRefreshInFlight = false;
+    }
+  }
+
+  function applySumupPendingButtonState() {
+    const activeIntent = selBidder ? getActivePendingIntentForBidder(selBidder.id) : null;
+    document.querySelectorAll('#payButtons button[data-method="sumup-app"], #payButtons button[data-method="sumup-web"]').forEach(btn => {
+      if (btn.style.display === 'none') return;
+      if (AUCTION_STATUS !== 'settlement') {
+        btn.disabled = true;
+        return;
+      }
+      if (activeIntent) {
+        btn.disabled = true;
+        btn.title = 'This bidder already has a pending SumUp payment.';
+      } else {
+        btn.disabled = false;
+        btn.removeAttribute('title');
+      }
+    });
+  }
+
+  function renderPendingPayments() {
+    const activePending = pendingIntents.filter(isPendingIntentActive);
+
+    if (auctionPendingPaymentsEl) {
+      if (activePending.length === 0) {
+        auctionPendingPaymentsEl.hidden = true;
+        auctionPendingPaymentsEl.replaceChildren();
+      } else {
+        auctionPendingPaymentsEl.hidden = false;
+        auctionPendingPaymentsEl.innerHTML = `
+          <div class="pending-payments-heading">
+            <span>Pending SumUp</span>
+            <strong>${activePending.length}</strong>
+          </div>
+          <div class="pending-payment-list">
+            ${activePending.map(intent => `
+              <div class="pending-payment-row" data-intent-id="${escapeHtml(intent.intent_id)}">
+                <button class="pending-payment-link" type="button" data-bidder-id="${escapeHtml(intent.bidder_id)}">
+                  ${escapeHtml(intent.bidder_label || `Bidder ${intent.bidder_id}`)}
+                </button>
+                <span>${escapeHtml(formatPendingIntentAmount(intent))}</span>
+              </div>
+            `).join('')}
+          </div>
+        `;
+        auctionPendingPaymentsEl.querySelectorAll('.pending-payment-link').forEach(button => {
+          button.addEventListener('click', () => {
+            const bidder = bidders.find(row => Number(row.id) === Number(button.dataset.bidderId));
+            if (bidder) void selectBidder(bidder);
+          });
+        });
+      }
+    }
+
+    const bidderPending = selBidder ? getPendingIntentsForBidder(selBidder.id) : [];
+    if (bidderPendingPaymentsEl) {
+      if (!selBidder || bidderPending.length === 0) {
+        bidderPendingPaymentsEl.hidden = true;
+        bidderPendingPaymentsEl.replaceChildren();
+      } else {
+        bidderPendingPaymentsEl.hidden = false;
+        bidderPendingPaymentsEl.innerHTML = bidderPending.map(intent => `
+          <div class="pending-payment-card" data-intent-id="${escapeHtml(intent.intent_id)}">
+            <div class="pending-payment-card-main">
+              <div>
+                <div class="pending-payment-title">Waiting for SumUp confirmation</div>
+                <div class="pending-payment-meta">${escapeHtml(formatPendingIntentAmount(intent))} · ${escapeHtml(intent.channel === 'hosted' ? 'SumUp web' : 'SumUp reader')} · ${escapeHtml(formatPendingIntentAge(intent))}</div>
+                <div class="pending-payment-status">${escapeHtml(getPendingStatusText(intent))}</div>
+              </div>
+              <div class="pending-payment-actions">
+                ${intent.hosted_link ? '<button class="secondary-button pending-open-checkout" type="button">Open checkout</button>' : ''}
+                <button class="secondary-button pending-check-now" type="button">Check now</button>
+                <button class="secondary-button pending-cancel-intent" type="button">Cancel</button>
+              </div>
+            </div>
+          </div>
+        `).join('');
+        bidderPendingPaymentsEl.querySelectorAll('.pending-payment-card').forEach(card => {
+          const intentId = card.dataset.intentId;
+          card.querySelector('.pending-check-now')?.addEventListener('click', () => {
+            void verifyPendingIntent(intentId, { userInitiated: true });
+          });
+          card.querySelector('.pending-open-checkout')?.addEventListener('click', () => {
+            const intent = pendingIntents.find(row => row.intent_id === intentId);
+            if (intent?.hosted_link) window.open(intent.hosted_link, '_blank', 'noopener');
+          });
+          card.querySelector('.pending-cancel-intent')?.addEventListener('click', () => {
+            void cancelPendingIntent(intentId, { userInitiated: true });
+          });
+        });
+      }
+    }
+
+    applySumupPendingButtonState();
+    renderBidders({ force: true });
+  }
+
+  function focusPendingPayments(intent) {
+    if (intent?.bidder_id && Number(selBidder?.id) !== Number(intent.bidder_id)) {
+      const bidder = bidders.find(row => Number(row.id) === Number(intent.bidder_id));
+      if (bidder) void selectBidder(bidder, { preserveUiState: true });
+    }
+    setTimeout(() => {
+      const target = bidderPendingPaymentsEl && !bidderPendingPaymentsEl.hidden
+        ? bidderPendingPaymentsEl
+        : auctionPendingPaymentsEl;
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target?.classList.add('pending-payments-panel-highlight');
+      window.setTimeout(() => target?.classList.remove('pending-payments-panel-highlight'), 1600);
+    }, 100);
+  }
+
+  async function verifyPendingIntent(intentId, options = {}) {
+    const { userInitiated = false, foreground = false } = options;
+    try {
+      const response = await window.AppAuth.authenticatedFetch(
+        `${API}/payments/intents/${encodeURIComponent(intentId)}/verify`,
+        {
+          method: 'POST',
+          headers: { "X-CSRF-Token": token }
+        }
+      );
+      const status = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(status.error || 'Unable to verify SumUp payment');
+      const merged = upsertPendingIntent(status);
+      updateWaitingModal(merged || status);
+      renderPendingPayments();
+      updateWaitingModal(merged || status);
+
+      if (status.status === 'succeeded') {
+        showMessage('SumUp payment confirmed.', 'success');
+        finishWaitingModal(intentId, { delayMs: foreground ? 1200 : 0 });
+        removePendingIntent(intentId);
+        await fetchBidders();
+        await loadPendingIntents();
+        return status;
+      }
+      if (status.status === 'failed' || status.status === 'expired') {
+        if (userInitiated || foreground) showMessage(`SumUp payment ${status.status}.`, 'error');
+        finishWaitingModal(intentId, { delayMs: foreground ? 1600 : 0 });
+        removePendingIntent(intentId);
+        renderPendingPayments();
+        await fetchBidders();
+        await loadPendingIntents();
+        return status;
+      }
+      if (userInitiated && merged?.verification_state === 'unavailable') {
+        showMessage('SumUp verification is unavailable. The payment remains pending and has not been recorded.', 'info');
+      } else if (userInitiated && merged?.verification_state === 'failed') {
+        showMessage('The SumUp checkout was declined. The checkout remains open for another attempt or alternate payment method.', 'info');
+      } else if (userInitiated && merged?.verification_state === 'mismatch') {
+        showMessage('SumUp returned transaction details that did not match this payment. The payment remains pending.', 'error');
+      } else if (userInitiated) {
+        showMessage('SumUp confirmation is still pending. No payment has been recorded.', 'info');
+      }
+      return status;
+    } catch (error) {
+      if (userInitiated || foreground) {
+        showMessage(`SumUp verification could not be completed: ${error.message}`, 'error');
+      }
+      return null;
+    }
+  }
+
+  async function cancelPendingIntent(intentId, options = {}) {
+    const { userInitiated = false } = options;
+    const intent = pendingIntents.find(row => row.intent_id === intentId);
+    const label = intent?.bidder_label || 'this bidder';
+    const amountText = intent ? formatPendingIntentAmount(intent) : 'this payment';
+    const confirmation = await DayPilot.Modal.confirm(
+      `
+        <strong>Stop waiting for this SumUp payment?</strong><br><br>
+        ${escapeHtml(label)} - ${escapeHtml(amountText)}<br><br>
+        ManeBid will stop checking this SumUp payment and make the payment buttons available again.
+        Only do this if the customer is no longer trying to complete this SumUp payment, or you are taking payment another way.
+      `,
+      {
+        okText: 'Stop waiting',
+        cancelText: 'Keep waiting',
+        width: 520
+      }
+    );
+    if (confirmation?.canceled) return null;
+
+    try {
+      const response = await window.AppAuth.authenticatedFetch(
+        `${API}/payments/intents/cancel/${AUCTION_ID}/${encodeURIComponent(intentId)}`,
+        {
+          method: 'POST',
+          headers: { "X-CSRF-Token": token }
+        }
+      );
+      const status = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(status.error || 'Unable to cancel SumUp payment');
+
+      removePendingIntent(intentId);
+      if (waitingModalIntentId === intentId) closeWaitingModal();
+      renderPendingPayments();
+      await fetchBidders();
+      await loadPendingIntents();
+      if (userInitiated) showMessage('Pending SumUp payment cancelled. Payment options are available again.', 'info');
+      return status;
+    } catch (error) {
+      if (userInitiated) showMessage(`SumUp pending payment could not be cancelled: ${error.message}`, 'error');
+      return null;
+    }
+  }
+
+  function stopWaitingModalPolling() {
+    if (waitingModalPollTimer) {
+      window.clearInterval(waitingModalPollTimer);
+      waitingModalPollTimer = null;
+    }
+  }
+
+  function stopWaitingModalElapsedTimer() {
+    if (waitingModalTimer) {
+      window.clearInterval(waitingModalTimer);
+      waitingModalTimer = null;
+    }
+  }
+
+  function finishWaitingModal(intentId, options = {}) {
+    if (waitingModalIntentId !== intentId) {
+      return;
+    }
+    updateWaitingModal();
+    stopWaitingModalPolling();
+    stopWaitingModalElapsedTimer();
+    window.setTimeout(closeWaitingModal, Math.max(0, Number(options.delayMs || 0)));
+  }
+
+  function closeWaitingModal() {
+    stopWaitingModalElapsedTimer();
+    stopWaitingModalPolling();
+    waitingModalEl?.remove();
+    waitingModalEl = null;
+    waitingModalIntentId = null;
+    waitingModalStartedAt = 0;
+  }
+
+  function updateWaitingModal(latestIntent = null) {
+    if (!waitingModalEl || !waitingModalIntentId) return;
+    const intent = latestIntent?.intent_id === waitingModalIntentId
+      ? latestIntent
+      : pendingIntents.find(row => row.intent_id === waitingModalIntentId);
+    const elapsed = Math.max(0, Math.floor((Date.now() - waitingModalStartedAt) / 1000));
+    const statusEl = waitingModalEl.querySelector('[data-waiting-status]');
+    const elapsedEl = waitingModalEl.querySelector('[data-waiting-elapsed]');
+    const openButton = waitingModalEl.querySelector('[data-open-checkout]');
+    const waitingState = !intent
+      || (intent.status === 'pending' && ['pending', 'not_found'].includes(intent.verification_state || 'pending'));
+    if (statusEl) {
+      statusEl.textContent = elapsed >= 30 && waitingState
+        ? 'Still waiting. You can continue working while ManeBid keeps checking.'
+        : getPendingStatusText(intent);
+    }
+    if (elapsedEl) elapsedEl.textContent = `Waiting ${elapsed}s`;
+    if (openButton) openButton.hidden = !intent?.hosted_link;
+  }
+
+  function showWaitingModal(intent) {
+    closeWaitingModal();
+    waitingModalIntentId = intent.intent_id;
+    waitingModalStartedAt = Date.now();
+    waitingModalEl = document.createElement('div');
+    waitingModalEl.className = 'modal-overlay sumup-waiting-overlay';
+    waitingModalEl.innerHTML = `
+      <div class="modal-card sumup-waiting-card" role="dialog" aria-modal="true" aria-labelledby="sumupWaitingTitle">
+        <div class="sumup-spinner" aria-hidden="true"></div>
+        <h3 id="sumupWaitingTitle" class="modal-title">Waiting for SumUp confirmation</h3>
+        <div class="sumup-waiting-amount">${escapeHtml(formatPendingIntentAmount(intent))}</div>
+        <div class="sumup-waiting-meta">${escapeHtml(intent.bidder_label || formatBidderLabel(selBidder, { prefix: true }))}</div>
+        <p class="sumup-waiting-status" data-waiting-status>${escapeHtml(getPendingStatusText(intent))}</p>
+        <div class="sumup-waiting-elapsed" data-waiting-elapsed>Waiting 0s</div>
+        <div class="modal-actions">
+          <button class="secondary-button" type="button" data-continue-working>Continue working</button>
+          <button class="secondary-button" type="button" data-open-checkout ${intent.hosted_link ? '' : 'hidden'}>Open checkout</button>
+          <button class="secondary-button" type="button" data-cancel-intent>Cancel</button>
+          <button class="modal-button modal-button-primary" type="button" data-check-now>Check now</button>
+        </div>
+      </div>
+    `;
+    waitingModalEl.querySelector('[data-continue-working]')?.addEventListener('click', closeWaitingModal);
+    waitingModalEl.querySelector('[data-open-checkout]')?.addEventListener('click', () => {
+      const latest = pendingIntents.find(row => row.intent_id === waitingModalIntentId);
+      if (latest?.hosted_link) window.open(latest.hosted_link, '_blank', 'noopener');
+    });
+    waitingModalEl.querySelector('[data-check-now]')?.addEventListener('click', () => {
+      void verifyPendingIntent(waitingModalIntentId, { userInitiated: true, foreground: true });
+    });
+    waitingModalEl.querySelector('[data-cancel-intent]')?.addEventListener('click', () => {
+      void cancelPendingIntent(waitingModalIntentId, { userInitiated: true });
+    });
+    document.body.appendChild(waitingModalEl);
+    waitingModalTimer = window.setInterval(updateWaitingModal, 1000);
+    waitingModalPollTimer = window.setInterval(() => {
+      if (waitingModalIntentId) void verifyPendingIntent(waitingModalIntentId, { foreground: true });
+    }, 3000);
+    updateWaitingModal();
+  }
+
+  async function verifyAllPendingIntentsQuietly() {
+    const activePending = pendingIntents.filter(isPendingIntentActive);
+    for (const intent of activePending) {
+      await verifyPendingIntent(intent.intent_id);
+    }
+  }
+
 
   function getBidderListRenderKey(sortedBidders) {
     return JSON.stringify(sortedBidders.map((bidder) => ({
@@ -588,6 +985,7 @@ buttons.forEach(btn => {
       label: formatBidderLabel(bidder),
       balance: Number(bidder.balance || 0),
       paymentStatus: getPaymentStatus(bidder),
+      pendingCount: getPendingIntentsForBidder(bidder.id).length,
       selected: (selectedBidderId ?? selBidder?.id) === bidder.id
     })));
   }
@@ -606,7 +1004,15 @@ buttons.forEach(btn => {
       if(getPaymentStatus(b)==='part-paid') tr.classList.add('bidder-part-paid');
       if(b.balance<0) tr.classList.add('bidder-negative');
       tr.dataset.id=b.id;
-      appendTextCell(tr, formatBidderLabel(b));
+      const labelCell = appendTextCell(tr, formatBidderLabel(b));
+      const pendingCount = getPendingIntentsForBidder(b.id).length;
+      if (pendingCount > 0) {
+        const badge = document.createElement('span');
+        badge.className = 'pending-bidder-badge';
+        badge.textContent = `${pendingCount} pending`;
+        labelCell.appendChild(document.createTextNode(' '));
+        labelCell.appendChild(badge);
+      }
       appendTextCell(tr, money(b.balance));
       tr.onclick=()=>selectBidder(b);
       if((selectedBidderId ?? selBidder?.id)===b.id) tr.classList.add('sel');
@@ -631,6 +1037,7 @@ buttons.forEach(btn => {
       fingerprintVisible = false;
       if (lotsTotalEl) lotsTotalEl.textContent = '';
       updateFingerprintDisplay();
+      renderPendingPayments();
       persistBuyerDisplayState();
       return;
     }
@@ -681,6 +1088,7 @@ buttons.forEach(btn => {
 
     renderLots();
     renderPayments();
+    renderPendingPayments();
 
 
     if (AUCTION_STATUS === 'settlement') {
@@ -688,6 +1096,7 @@ document.getElementById('payButtons').classList.remove('disabled');
 document.querySelectorAll('#payButtons button[data-method]').forEach(btn => { btn.disabled = btn.style.display === 'none'; });
 document.querySelectorAll('.delPay').forEach(btn => btn.disabled = false);
 updatePaymentStateTooltip(true);
+applySumupPendingButtonState();
 
 
   } else {
@@ -816,56 +1225,17 @@ updateTotals();
 
 
 
-  // ---------- SumUp integration helper ----------
-  async function pollSumupIntent(intentId, maxAttempts = 20) {
-    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      await new Promise((resolve) => window.setTimeout(resolve, 3000));
-      try {
-        const response = await window.AppAuth.authenticatedFetch(
-          `${API}/payments/intents/${encodeURIComponent(intentId)}/verify`,
-          { method: 'POST' }
-        );
-        const status = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(status.error || 'Unable to verify SumUp payment');
-        }
-        if (status.status === 'succeeded') {
-          showMessage('SumUp payment confirmed.', 'success');
-          await fetchBidders();
-          return;
-        }
-        if (status.status === 'failed' || status.status === 'expired') {
-          showMessage(`SumUp payment ${status.status}.`, 'error');
-          await fetchBidders();
-          return;
-        }
-        if (status.verification_state === 'unavailable') {
-          showMessage(
-            'SumUp verification is currently unavailable. The payment remains pending and has not been recorded.',
-            'info'
-          );
-          return;
-        }
-        if (status.verification_state === 'mismatch') {
-          showMessage(
-            'SumUp returned transaction details that did not match this payment. The payment remains pending.',
-            'error'
-          );
-          return;
-        }
-      } catch (error) {
-        if (attempt === maxAttempts - 1) {
-          showMessage(`SumUp verification could not be completed: ${error.message}`, 'error');
-        }
-      }
-    }
-    showMessage('SumUp confirmation is still pending. No payment has been recorded.', 'info');
-  }
-
   async function startSumupPayment(amt, donation, note, mode = 'app') {
     if (!selBidder) {
       showMessage('No bidder selected', 'error');
-      return;
+      return false;
+    }
+
+    const existingIntent = getActivePendingIntentForBidder(selBidder.id);
+    if (existingIntent) {
+      showMessage('This bidder already has a pending SumUp payment.', 'info');
+      focusPendingPayments(existingIntent);
+      return true;
     }
 
     const paymentAmount = roundCurrency(amt);
@@ -874,7 +1244,7 @@ updateTotals();
     const donationMinor = Math.round(Number(donationAmount) * 100);
     if (!Number.isFinite(amountMinor) || !Number.isFinite(donationMinor) || amountMinor < 0 || donationMinor < 0 || (amountMinor === 0 && donationMinor === 0)) {
       showMessage('Invalid amount for SumUp payment', 'error');
-      return;
+      return false;
     }
 
     try {
@@ -897,10 +1267,20 @@ updateTotals();
 
       if (!response.ok) {
         let msg = `Failed to start SumUp payment (status ${response.status})`;
+        let pendingIntent = null;
         try {
           const errJson = await response.json();
+          if (response.status === 409 && errJson?.error === 'pending_sumup_intent' && errJson.pending_intent) {
+            pendingIntent = upsertPendingIntent(errJson.pending_intent);
+          }
           if (errJson && errJson.error) msg = errJson.error;
         } catch (_) { /* ignore JSON parse errors */ }
+        if (pendingIntent) {
+          renderPendingPayments();
+          showMessage('This bidder already has a pending SumUp payment.', 'info');
+          focusPendingPayments(pendingIntent);
+          return true;
+        }
         throw new Error(msg);
       }
 
@@ -913,18 +1293,29 @@ updateTotals();
         throw new Error('Backend did not return a SumUp checkout URL.');
       }
 
+      const pendingIntent = upsertPendingIntent({
+        ...data,
+        bidder_id: selBidder.id,
+        bidder_label: formatBidderLabel(selBidder, { prefix: true }),
+        amount_minor: amountMinor + donationMinor,
+        donation_minor: donationMinor,
+        currency: 'GBP',
+        channel: mode === 'web' ? 'hosted' : 'app',
+        status: 'pending',
+        created_at: new Date().toISOString(),
+        hosted_link: hostedLink
+      });
+
       // If this is a SumUp app deep link, this will jump into the app on a tablet/phone.
       // If it’s a hosted checkout URL, it will open in a new tab.
       window.open(url, '_blank', 'noopener');
-      showMessage(
-        'SumUp payment started. ManeBid will record it only after direct verification from SumUp.',
-        'info'
-      );
-      void pollSumupIntent(data.intent_id);
+      renderPendingPayments();
+      showWaitingModal(pendingIntent);
+      return true;
 
     } catch (err) {
-
-        showMessage('SumUp error: ' + err.message, 'error');
+      showMessage('SumUp error: ' + err.message, 'error');
+      return false;
     }
   }
 
@@ -1034,14 +1425,14 @@ overlay.querySelector('#amt').focus();
 
       // NEW: SumUp branch
   if (method === 'sumup-app') {
-    await startSumupPayment(amt, donation, note, 'app');
-    overlay.remove();
+    const handled = await startSumupPayment(amt, donation, note, 'app');
+    if (handled) overlay.remove();
     return;
   }
 
   if (method === 'sumup-web') {
-    await startSumupPayment(amt, donation, note, 'web');
-    overlay.remove();
+    const handled = await startSumupPayment(amt, donation, note, 'web');
+    if (handled) overlay.remove();
     return;
   }
 
@@ -1178,5 +1569,8 @@ document.getElementById('summaryBtn').onclick = async () => {
   void fetchCurrentUsername();
   fetchBidders();
   refreshPaymentButtons();
+  loadPendingIntents();
   setInterval(fetchBidders,POLL_MS);
+  setInterval(loadPendingIntents, 10000);
+  setInterval(() => { void verifyAllPendingIntentsQuietly(); }, 10000);
 })();

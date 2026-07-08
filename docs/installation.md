@@ -193,12 +193,12 @@ Below is a description of each setting:
 | `LOG_LEVEL` | text | `"INFO"` | Logging level (e.g., `DEBUG`, `INFO`, `WARN`, `ERROR`). Length **3–10** characters. |
 | `MAX_AUCTIONS` | number | `100` | Max auctions allowed in the system. Range: **1–100**. |
 | `MAX_ITEMS` | number | `2000` | Max items across auctions. Range: **1–10000**. |
-| `ITEM_PHOTO_MAX_BYTES` | number | `10485760` | Maximum item photo upload size in bytes. Range: **1024–52428800** (1 KiB–50 MiB). |
-| `RESOURCE_IMAGE_MAX_BYTES` | number | `10485760` | Maximum size of one maintenance resource image. Range: **1024–52428800**. |
+| `ITEM_PHOTO_MAX_MB` | number | `10` | Maximum item photo upload size in megabytes. Range: **1–50**. |
+| `RESOURCE_IMAGE_MAX_MB` | number | `10` | Maximum size of one maintenance resource image in megabytes. Range: **1–50**. |
 | `RESOURCE_UPLOAD_MAX_FILES` | number | `20` | Maximum resource images accepted in one request. Range: **1–MAX_UPLOADS**. |
-| `BACKUP_UPLOAD_MAX_BYTES` | number | `536870912` | Maximum compressed managed-backup upload and archive size. Range: **1024–17179869184**. |
-| `BACKUP_ARCHIVE_MAX_EXPANDED_BYTES` | number | `2147483648` | Maximum cumulative expanded size while inspecting or restoring a backup. Range: **1024–68719476736**. |
-| `BACKUP_ARCHIVE_MAX_ENTRY_BYTES` | number | `536870912` | Maximum expanded size of one backup entry. Range: **1024–BACKUP_ARCHIVE_MAX_EXPANDED_BYTES**. |
+| `BACKUP_UPLOAD_MAX_MB` | number | `512` | Maximum compressed managed-backup upload and archive size in megabytes. Range: **1–16384**. |
+| `BACKUP_ARCHIVE_MAX_EXPANDED_MB` | number | `2048` | Maximum cumulative expanded size while inspecting or restoring a backup in megabytes. Range: **1–65536**. |
+| `BACKUP_ARCHIVE_MAX_ENTRY_MB` | number | `512` | Maximum expanded size of one backup entry in megabytes. Range: **1–BACKUP_ARCHIVE_MAX_EXPANDED_MB**. |
 | `BACKUP_ARCHIVE_MAX_ENTRIES` | number | `10000` | Maximum number of ZIP entries, including directories. Range: **1–100000**. |
 | `CURRENCY_SYMBOL` | text | `"£"` | Currency symbol for display. Length **1–3** characters. |
 | `PASSWORD_MIN_LENGTH` | number | `8` | Minimum password length. Range: **5–100**. |

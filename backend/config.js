@@ -132,6 +132,17 @@ function optNum(obj, key, defaultValue, min = -Infinity, max = Infinity) {
   return v;
 }
 
+function optMegabytes(obj, mbKey, bytesKey, defaultMb, minMb = 1, maxMb = Infinity) {
+  if (Object.prototype.hasOwnProperty.call(obj, mbKey)) {
+    const v = optNum(obj, mbKey, defaultMb, minMb, maxMb);
+    if (!Number.isInteger(v)) {
+      throw new Error(`Number ${mbKey} must be an integer number of megabytes`);
+    }
+    return v * 1024 * 1024;
+  }
+  return optNum(obj, bytesKey, defaultMb * 1024 * 1024, minMb * 1024 * 1024, maxMb * 1024 * 1024);
+}
+
 function optStr(obj, key, defaultValue, minLen = 1, maxLen = Infinity) {
   if (!Object.prototype.hasOwnProperty.call(obj, key)) return defaultValue;
   const v = obj[key];
@@ -173,12 +184,21 @@ try {
   const PASSWORD_MIN_LENGTH = reqNum(json, 'PASSWORD_MIN_LENGTH', 5, 100); // e.g., 5
   const RATE_LIMIT_WINDOW = reqNum(json, 'RATE_LIMIT_WINDOW', 1, 86400); // in seconds
   const RATE_LIMIT_MAX = reqNum(json, 'RATE_LIMIT_MAX', 1, 1000);
-  const ITEM_PHOTO_MAX_BYTES = optNum(json, 'ITEM_PHOTO_MAX_BYTES', 10 * 1024 * 1024, 1024, 50 * 1024 * 1024);
-  const RESOURCE_IMAGE_MAX_BYTES = optNum(json, 'RESOURCE_IMAGE_MAX_BYTES', 10 * 1024 * 1024, 1024, 50 * 1024 * 1024);
+  const ITEM_PHOTO_MAX_BYTES = optMegabytes(json, 'ITEM_PHOTO_MAX_MB', 'ITEM_PHOTO_MAX_BYTES', 10, 1, 50);
+  const RESOURCE_IMAGE_MAX_BYTES = optMegabytes(json, 'RESOURCE_IMAGE_MAX_MB', 'RESOURCE_IMAGE_MAX_BYTES', 10, 1, 50);
   const RESOURCE_UPLOAD_MAX_FILES = optNum(json, 'RESOURCE_UPLOAD_MAX_FILES', Math.min(20, MAX_UPLOADS), 1, MAX_UPLOADS);
-  const BACKUP_UPLOAD_MAX_BYTES = optNum(json, 'BACKUP_UPLOAD_MAX_BYTES', 512 * 1024 * 1024, 1024, 16 * 1024 * 1024 * 1024);
-  const BACKUP_ARCHIVE_MAX_EXPANDED_BYTES = optNum(json, 'BACKUP_ARCHIVE_MAX_EXPANDED_BYTES', 2 * 1024 * 1024 * 1024, 1024, 64 * 1024 * 1024 * 1024);
-  const BACKUP_ARCHIVE_MAX_ENTRY_BYTES = optNum(
+  const BACKUP_UPLOAD_MAX_BYTES = optMegabytes(json, 'BACKUP_UPLOAD_MAX_MB', 'BACKUP_UPLOAD_MAX_BYTES', 512, 1, 16 * 1024);
+  const BACKUP_ARCHIVE_MAX_EXPANDED_BYTES = optMegabytes(json, 'BACKUP_ARCHIVE_MAX_EXPANDED_MB', 'BACKUP_ARCHIVE_MAX_EXPANDED_BYTES', 2048, 1, 64 * 1024);
+  const BACKUP_ARCHIVE_MAX_ENTRY_BYTES = Object.prototype.hasOwnProperty.call(json, 'BACKUP_ARCHIVE_MAX_ENTRY_MB')
+    ? optMegabytes(
+      json,
+      'BACKUP_ARCHIVE_MAX_ENTRY_MB',
+      'BACKUP_ARCHIVE_MAX_ENTRY_BYTES',
+      Math.min(512, BACKUP_ARCHIVE_MAX_EXPANDED_BYTES / 1024 / 1024),
+      1,
+      BACKUP_ARCHIVE_MAX_EXPANDED_BYTES / 1024 / 1024
+    )
+    : optNum(
     json,
     'BACKUP_ARCHIVE_MAX_ENTRY_BYTES',
     Math.min(512 * 1024 * 1024, BACKUP_ARCHIVE_MAX_EXPANDED_BYTES),
