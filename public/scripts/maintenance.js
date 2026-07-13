@@ -18,9 +18,7 @@ const openAboutModalButton = document.getElementById("open-about-modal");
 const aboutModal = document.getElementById("about-modal");
 const closeAboutModalButton = document.getElementById("close-about-modal");
 const aboutVersionSummaryEl = document.getElementById("about-version-summary");
-const aboutDatabaseIdEl = document.getElementById("about-database-id");
-const aboutDatabaseCreatedAtEl = document.getElementById("about-database-created-at");
-const aboutDatabaseCreatedByBackendEl = document.getElementById("about-database-created-by-backend");
+const aboutDatabaseEntryEl = document.getElementById("about-database-entry");
 const aboutDatabaseRestoreEl = document.getElementById("about-database-restore");
 const aboutBackendUptimeEl = document.getElementById("about-backend-uptime");
 const openAddAuctionModalButton = document.getElementById("open-add-auction-modal");
@@ -1055,17 +1053,16 @@ function updateVersionDisplays(versions = {}) {
   const databaseId = currentVersions.database_id || "Unknown";
   const databaseCreatedAt = formatDateTime(currentVersions.database_created_at);
   const databaseCreatedByBackend = currentVersions.database_created_by_backend_version || "Unknown";
+  const databaseEntry = `ID ${databaseId}, Created ${databaseCreatedAt} By Backend ${databaseCreatedByBackend}`;
   const restoreSummary = formatRestoreSummary(currentVersions);
   const uptime = formatUptime(currentVersions.last_started_at);
 
   if (softwareVersion) {
-    softwareVersion.textContent = `Backend: ${backend}, Schema: ${schema}, Payment: ${payment}`;
+    softwareVersion.textContent = `Server Version: ${backend}`;
   }
 
   if (aboutVersionSummaryEl) aboutVersionSummaryEl.textContent = versionSummary;
-  if (aboutDatabaseIdEl) aboutDatabaseIdEl.textContent = databaseId;
-  if (aboutDatabaseCreatedAtEl) aboutDatabaseCreatedAtEl.textContent = databaseCreatedAt;
-  if (aboutDatabaseCreatedByBackendEl) aboutDatabaseCreatedByBackendEl.textContent = databaseCreatedByBackend;
+  if (aboutDatabaseEntryEl) aboutDatabaseEntryEl.textContent = databaseEntry;
   if (aboutDatabaseRestoreEl) aboutDatabaseRestoreEl.textContent = restoreSummary;
   if (aboutBackendUptimeEl) aboutBackendUptimeEl.textContent = uptime;
 }

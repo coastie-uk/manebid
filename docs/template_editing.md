@@ -1,12 +1,12 @@
 # Output template and item slip config editing guide (server operator)
 
-This project generates:
+ManeBid can generate:
 
-- An **auction slide deck** (`/generate-pptx`) using `pptxConfig.json`
-- **Item cards** (`/generate-cards`) using `cardConfig.json`
-- A single-item **print slip PDF** (`/auctions/:auctionId/items/:id/print-slip`) using `slipConfig.json`
+- An **auction slide deck** using `pptxConfig.json`
+- **Item cards**  using `cardConfig.json`
+- A single-item receipt-priner-compatible **print slip PDF** using `slipConfig.json`
 
-All configs are plain JSON and are loaded fresh on each generation request (no server restart required).
+All configs are plain JSON and are loaded fresh on each generation request (no server restart required when editing).
 
 ---
 
@@ -22,7 +22,7 @@ Live files in that directory:
 - `cardConfig.json` (item cards)
 - `slipConfig.json` (item slip PDF)
 
-If the files are missing, they are auto-created from:
+If the files are missing (e.g on first start), they are auto-created from:
 
 - `default.pptxConfig.json`
 - `default.cardConfig.json`
@@ -115,7 +115,7 @@ The default `CONFIG_IMG_DIR` is `/var/lib/auction/resources` (see `backend/confi
 
 ## Item slip schema editing (`slipConfig.json`)
 
-The item slip renderer is text-only and is intended for thermal receipt printers (e.g. 80mm) or 6x4 label output.
+The item slip renderer is text-only and is intended for thermal printers (e.g. 80mm receipt or 6x4 label output)
 
 Main schema blocks:
 

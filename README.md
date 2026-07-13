@@ -36,6 +36,14 @@ This software provides a single platform which automates the process from item s
 - Improved export functions including auction and bidder report generation
 - New item assembly management and collection tracking
 
+## New in 3.1
+
+- Auction QR code generation for public submission links
+- Operator messaging with attention/acknowledgement support
+- Improved SumUp payment recovery and verification for pending payments
+- Managed backup import/restore improvements and clearer maintenance diagnostics
+- CSV item import with preview, validation, and optional images
+- Hardened browser sessions, CSRF protection, upload limits, and backup validation
 
 ## System Requirements
 
@@ -49,7 +57,7 @@ This software provides a single platform which automates the process from item s
 - Node.js + Express
 - SQLite (via better-sqlite3)
 - Plain HTML, CSS, JS
-- Hosted via a webserver of your choice (insturctions included for Apache + HTTPS + Let's Encrypt)
+- Hosted via a webserver of your choice (instructions included for Apache + HTTPS + Let's Encrypt)
 
 
 ## Installation

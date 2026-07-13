@@ -24,7 +24,7 @@ const rl = readline.createInterface({
 const MENU_OPTIONS = [
   { key: "1", aliases: ["password", "pass", "p"], label: "Set user password", action: setMaintenancePassword },
   { key: "2", aliases: ["audit", "clear-audit"], label: "Clear database audit log", action: clearAuditLog },
-  { key: "3", aliases: ["reset", "db"], label: "Reset database", action: () => resetDatabase(false) },
+  { key: "3", aliases: ["reset", "db"], label: "Reset database but retain counters", action: () => resetDatabase(false) },
   { key: "4", aliases: ["reset-all", "counters"], label: "Reset database including counters", action: () => resetDatabase(true) },
   { key: "5", aliases: ["users", "delete-users"], label: `Remove all users except "${ROOT_USERNAME}"`, action: removeAllNonRootUsers },
   { key: "6", aliases: ["test-users", "delete-test-users"], label: "Remove test-generated users", action: removeTestUsers },
@@ -138,7 +138,7 @@ async function clearAuditLog() {
 
 async function resetDatabase(counters = false) {
   const confirmed = await promptForConfirmation(
-    `This will clear the database${counters ? " and reset all counters" : ""}. This action cannot be undone. Type \`reset\` to proceed: `,
+    `This will clear the database of auctions and items ${counters ? " and reset all counters" : ""}. Users will not be affected. This action cannot be undone. Type \`reset\` to proceed: `,
     "reset"
   );
 

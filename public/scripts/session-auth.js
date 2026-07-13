@@ -10,6 +10,7 @@
   const SESSION_REFRESH_MS = 60000;
   const PREFERENCES_API = `${API}/preferences`;
   const PREFERENCE_SAVE_MS = 180000;
+  const preferenceControllers = new Set();
   const LEGACY_TOKEN_KEYS = ["token", "cashierToken", "maintenanceToken"];
   const ACCESS_LABELS = Object.freeze({
     admin: "Manage Items",
@@ -535,6 +536,9 @@
   async function logout() {
     const csrfToken = getToken();
     try {
+      await Promise.allSettled(
+        Array.from(preferenceControllers, (controller) => controller.flush({ keepalive: true }))
+      );
       if (csrfToken) await authenticatedFetch(`${API}/logout`, { method: "POST" });
     } finally {
       clearAllSessions({ broadcast: true });
@@ -680,7 +684,7 @@
     global.document.addEventListener("visibilitychange", handleVisibilityChange);
     global.addEventListener("pagehide", handlePageHide);
 
-    return {
+    const controller = {
       getDocument,
       getPagePreferences,
       replacePagePreferences,
@@ -688,12 +692,15 @@
       flush,
       isDirty: updateDirtyTracking,
       destroy() {
+        preferenceControllers.delete(controller);
         global.clearInterval(saveTimer);
         global.removeEventListener(SESSION_EVENT, handleSessionEvent);
         global.document.removeEventListener("visibilitychange", handleVisibilityChange);
         global.removeEventListener("pagehide", handlePageHide);
       }
     };
+    preferenceControllers.add(controller);
+    return controller;
   }
 
   global.AppAuth = {

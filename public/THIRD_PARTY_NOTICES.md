@@ -5,8 +5,6 @@ distributed static files.
 
 ## DayPilot Modal 3.15.1
 
-Source file: `public/scripts/daypilot-modal-3.15.1.min.js`
-
 Homepage: <https://modal.daypilot.org/>
 
 License: Apache License 2.0
@@ -21,10 +19,6 @@ The distributed JavaScript file also retains the upstream license block.
 
 ## CropperJS 1.5.13
 
-Source files:
-
-- `public/vendor/cropperjs/1.5.13/cropper.min.js`
-- `public/vendor/cropperjs/1.5.13/cropper.min.css`
 
 Homepage: <https://fengyuanchen.github.io/cropperjs>
 

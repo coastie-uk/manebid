@@ -9,7 +9,7 @@
 <body>
   <header id="top">
     <nav class="nav">
-      <div class="brand brand-lockup"><span class="app-wordmark">ManeBid</span><span class="app-tagline">Convention Auction Manager</span></div>
+      <div class="brand brand-lockup"><span class="app-wordmark"><span class="app-wordmark__mane">Mane</span><span class="app-wordmark__bid">Bid</span></span><span class="app-tagline">Convention Auction Manager</span></div>
       <div class="nav-links">
         <a href="#overview">Overview</a>
         <a href="#operations">Description</a>
@@ -56,15 +56,25 @@
             <li>Public item submission with photos upload and QR support.</li>
             <li>Admin tools for editing, photos, moving/copying items, and exports.</li>
             <li>Automatic PowerPoint slide deck and item card / slip generation with customisable templates</li>
-            <li>Live bid recording with undo and running totals.</li>
-            <li>Automatic collation of bidders' items; payment and refund handling</li>
+            <li>Live bid recording with undo and running totals. Optional bidder naming.</li>
+            <li>Automatic collation of bidders' items; payment and refund handling; additional donations</li>
             <li>Auto-updating slideshow for in-venue displays.</li>
             <li>Comprehensive maintenance panel for data management, diagnostics, and auction control.</li>
             <li>Support for multiple user accounts with configurable permissions</li>
             <li>SumUp payment integration (web checkout and card reader).</li>
+            
           </ul>
         </div>
         <div class="panel">
+                    <h3>New in Version 3.1</h3>
+          <ul>
+            <li>Auction QR code generation.</li>
+            <li>Operator-to-operator messaging across management screens</li>
+            <li>Import complete backups from other instances</li>
+            <li>Bulk CSV item import with preview</li>
+            <li>Improved reliability of SumUp payment handling</li>
+            </ul>
+
                     <h3>New in Version 3</h3>
           <ul>
             <li>New responsive menu-driven UI with light/dark themes.</li>
@@ -206,38 +216,38 @@
           <svg class="lifecycle-diagram" viewBox="0 0 700 200" role="img" aria-label="Auction lifecycle: Setup to Locked to Live to Settlement to Archived.">
             <defs>
               <linearGradient id="stageFill" x1="0" x2="1">
-                <stop offset="0%" stop-color="#1b2b4f"></stop>
-                <stop offset="100%" stop-color="#22385f"></stop>
+                <stop offset="0%" stop-color="#ffffff"></stop>
+                <stop offset="100%" stop-color="#eef4ff"></stop>
               </linearGradient>
               <marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
-                <path d="M0,0 L10,4 L0,8 Z" fill="#2ec4b6"></path>
+                <path d="M0,0 L10,4 L0,8 Z" fill="#0f62fe"></path>
               </marker>
             </defs>
-            <g font-family="Space Grotesk, sans-serif" font-size="14" fill="#eef3f8">
-              <rect x="20" y="40" width="120" height="60" rx="14" fill="url(#stageFill)" stroke="rgba(255,255,255,0.12)"></rect>
+            <g font-family="Space Grotesk, sans-serif" font-size="14" fill="#1b2430">
+              <rect x="20" y="40" width="120" height="60" rx="14" fill="url(#stageFill)" stroke="#d8dee6"></rect>
               <text x="80" y="68" text-anchor="middle" font-weight="600">Setup</text>
-              <text x="80" y="88" text-anchor="middle" font-size="12" fill="#a7b3c8">Accept items</text>
+              <text x="80" y="88" text-anchor="middle" font-size="12" fill="#5f6b7a">Accept items</text>
 
-              <rect x="160" y="40" width="120" height="60" rx="14" fill="url(#stageFill)" stroke="rgba(255,255,255,0.12)"></rect>
+              <rect x="160" y="40" width="120" height="60" rx="14" fill="url(#stageFill)" stroke="#d8dee6"></rect>
               <text x="220" y="68" text-anchor="middle" font-weight="600">Locked</text>
-              <text x="220" y="88" text-anchor="middle" font-size="12" fill="#a7b3c8">Organise & edit</text>
+              <text x="220" y="88" text-anchor="middle" font-size="12" fill="#5f6b7a">Organise & edit</text>
 
-              <rect x="300" y="40" width="120" height="60" rx="14" fill="url(#stageFill)" stroke="rgba(255,255,255,0.12)"></rect>
+              <rect x="300" y="40" width="120" height="60" rx="14" fill="url(#stageFill)" stroke="#d8dee6"></rect>
               <text x="360" y="68" text-anchor="middle" font-weight="600">Live</text>
-              <text x="360" y="88" text-anchor="middle" font-size="12" fill="#a7b3c8">Take bids</text>
+              <text x="360" y="88" text-anchor="middle" font-size="12" fill="#5f6b7a">Take bids</text>
 
-              <rect x="440" y="40" width="120" height="60" rx="14" fill="url(#stageFill)" stroke="rgba(255,255,255,0.12)"></rect>
+              <rect x="440" y="40" width="120" height="60" rx="14" fill="url(#stageFill)" stroke="#d8dee6"></rect>
               <text x="500" y="68" text-anchor="middle" font-weight="600">Settlement</text>
-              <text x="500" y="88" text-anchor="middle" font-size="12" fill="#a7b3c8">Take payment</text>
+              <text x="500" y="88" text-anchor="middle" font-size="12" fill="#5f6b7a">Take payment</text>
 
-              <rect x="580" y="40" width="120" height="60" rx="14" fill="url(#stageFill)" stroke="rgba(255,255,255,0.12)"></rect>
+              <rect x="580" y="40" width="120" height="60" rx="14" fill="url(#stageFill)" stroke="#d8dee6"></rect>
               <text x="640" y="68" text-anchor="middle" font-weight="600">Archived</text>
-              <text x="640" y="88" text-anchor="middle" font-size="12" fill="#a7b3c8">Freeze</text>
+              <text x="640" y="88" text-anchor="middle" font-size="12" fill="#5f6b7a">Freeze</text>
 
-              <line x1="140" y1="70" x2="160" y2="70" stroke="#2ec4b6" stroke-width="2" marker-end="url(#arrow)"></line>
-              <line x1="280" y1="70" x2="300" y2="70" stroke="#2ec4b6" stroke-width="2" marker-end="url(#arrow)"></line>
-              <line x1="420" y1="70" x2="440" y2="70" stroke="#2ec4b6" stroke-width="2" marker-end="url(#arrow)"></line>
-              <line x1="560" y1="70" x2="580" y2="70" stroke="#2ec4b6" stroke-width="2" marker-end="url(#arrow)"></line>
+              <line x1="140" y1="70" x2="160" y2="70" stroke="#0f62fe" stroke-width="2" marker-end="url(#arrow)"></line>
+              <line x1="280" y1="70" x2="300" y2="70" stroke="#0f62fe" stroke-width="2" marker-end="url(#arrow)"></line>
+              <line x1="420" y1="70" x2="440" y2="70" stroke="#0f62fe" stroke-width="2" marker-end="url(#arrow)"></line>
+              <line x1="560" y1="70" x2="580" y2="70" stroke="#0f62fe" stroke-width="2" marker-end="url(#arrow)"></line>
 
             </g>
           </svg>
@@ -246,7 +256,7 @@
   </main>
 
   <footer>
-    <p class="brand-lockup brand-lockup--inline"><span class="app-wordmark">ManeBid</span><span class="app-tagline">Convention Auction Manager</span></p>
+    <p class="brand-lockup brand-lockup--inline"><span class="app-wordmark"><span class="app-wordmark__mane">Mane</span><span class="app-wordmark__bid">Bid</span></span><span class="app-tagline">Convention Auction Manager</span></p>
     <p><a href="#top">Back to top</a></p>
   </footer>
 

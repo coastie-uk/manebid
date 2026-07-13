@@ -19,10 +19,6 @@ The following pages are provided:
 | ------ | ------- | ----- |
 | `/` | none | Public item submission page |
 | `/login.html` | operator | Shared operator login page |
-| `/admin` | `admin` | **Manage Items** - item entry, editing, bidding, exports |
-| `/maint` | `maintenance` | **Manage Auctions** - setup, templates, backups, diagnostics, user management |
-| `/cashier` | `cashier` | **Manage Payments** - bidder settlement, receipts, payment summaries |
-| `/slideshow` | `slideshow` | Standalone slideshow for public display |
 
 All operator pages use a shared session. After signing in once, you can move between the pages your account can access from the **Open** menu.
 
@@ -63,7 +59,7 @@ Items can now be added by four routes:
 
 1. [Public] Attendees can submit items from the public page. Item name and contributor are mandatory. A creator can also be supplied. On mobile, users can take a photo or choose one from the gallery. A checkbox is provided for cases where no photo is available.
 2. [Manage Items] Use **Create New Item...** to add items directly.
-3. [Manage Auctions] Import items in CSV format. Photos are not imported automatically, but they can be added later in **Manage Items**.
+3. [Manage Items] Import items in CSV format. Photos can be selected and uploaded automatically, but can also be added later in **Manage Items**.
 4. [Manage Auctions] Use **Test Data Generator** to create sample items for training or template testing. Test items include **[T]** in the name.
 
 [Manage Items] The following item operations are supported while the auction is editable:

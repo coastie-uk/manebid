@@ -101,6 +101,22 @@ test("SumUp app transactions require authoritative matching fields", () => {
   }
 });
 
+test("SumUp config requires API credentials whenever either SumUp method is enabled", () => {
+  const config = read("backend/config.js");
+  assert.match(
+    config,
+    /requireGroupIfEnabled\(\s*SUMUP_WEB_ENABLED\s*\|\|\s*SUMUP_CARD_PRESENT_ENABLED,\s*['"]SumUp Payments['"],\s*\[\s*['"]SUMUP_API_KEY['"],\s*['"]SUMUP_MERCHANT_CODE['"]\s*\]\s*\)/s
+  );
+  assert.match(
+    config,
+    /requireGroupIfEnabled\(\s*SUMUP_WEB_ENABLED,\s*['"]SumUp Web Payments['"],\s*\[\s*['"]SUMUP_RETURN_URL['"]\s*\]\s*\)/s
+  );
+  assert.match(
+    config,
+    /requireGroupIfEnabled\(\s*SUMUP_CARD_PRESENT_ENABLED,\s*['"]SumUp Card-Present Payments['"],\s*\[\s*['"]SUMUP_AFFILIATE_KEY['"],\s*['"]SUMUP_APP_ID['"],\s*['"]SUMUP_CALLBACK_SUCCESS['"],\s*['"]SUMUP_CALLBACK_FAIL['"]\s*\]\s*\)/s
+  );
+});
+
 test("SumUp client queries transactions by foreign reference and handles provider errors", async () => {
   const {
     getTransactionByForeignReference,
@@ -295,6 +311,16 @@ test("cashier renderers keep database text out of HTML parsing sinks", () => {
   const settlement = read("public/scripts/settlement.js");
   const liveFeed = read("public/scripts/live-feed.js");
   const backend = read("backend/backend.js");
+
+  for (const [name, script] of [["settlement", settlement], ["live feed", liveFeed]]) {
+    const patternSource = script.match(/const SAFE_PHOTO_FILENAME = (\/[^\n]+\/i);/)?.[1];
+    assert.ok(patternSource, `${name} photo filename allowlist is missing`);
+    const pattern = vm.runInNewContext(patternSource);
+    assert.equal(pattern.test("resized_sample_1759353388675_30.jpg"), true, `${name} rejects generated sample photos`);
+    assert.equal(pattern.test("resized_123e4567-e89b-42d3-a456-426614174000.jpg"), true, `${name} rejects uploaded photos`);
+    assert.equal(pattern.test("../resized_bad.jpg"), false, `${name} accepts parent traversal`);
+    assert.equal(pattern.test("resized_bad/evil.jpg"), false, `${name} accepts path separators`);
+  }
 
   assert.match(settlement, /function appendTextCell/);
   assert.match(settlement, /safePhotoFilename\(l\.photo_url \|\| l\.photoUrl \|\| l\.photo/);

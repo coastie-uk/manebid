@@ -500,8 +500,12 @@ addTest("M-003A","maintenance/backups import confirm success and list imported b
 
 addTest("M-003B","maintenance/backups import inspect success with same-major schema warning", async () => {
   const currentDbBuffer = await downloadCurrentDbBuffer();
+  const currentSchemaVersion = readDbMetadataFromBuffer(currentDbBuffer).schemaVersion;
+  const currentSchemaMatch = /^(\d+)\.(\d+)$/.exec(currentSchemaVersion);
+  assert.ok(currentSchemaMatch, `Expected current schema version to use major.minor format, got ${currentSchemaVersion}`);
+  const sameMajorSchemaVersion = `${currentSchemaMatch[1]}.${Number(currentSchemaMatch[2]) + 1}`;
   const minorMismatchBuffer = createTempDbBuffer(currentDbBuffer, (tempDb) => {
-    tempDb.prepare("UPDATE metadata SET value = ? WHERE data = 'schema_version'").run("3.1");
+    tempDb.prepare("UPDATE metadata SET value = ? WHERE data = 'schema_version'").run(sameMajorSchemaVersion);
   });
   const warningArchive = await buildManagedBackupArchiveFromDbBuffer(minorMismatchBuffer, {
     archiveFilename: `managed-import-warning-${Date.now()}.zip`

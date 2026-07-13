@@ -13,7 +13,7 @@
 <body>
   <header>
     <nav class="nav">
-      <div class="brand brand-lockup"><span class="app-wordmark">ManeBid</span><span class="app-tagline">Convention Auction Manager</span></div>
+      <div class="brand brand-lockup"><span class="app-wordmark"><span class="app-wordmark__mane">Mane</span><span class="app-wordmark__bid">Bid</span></span><span class="app-tagline">Convention Auction Manager</span></div>
       <div class="nav-links">
         <a href="index.html">Home</a>
         <a href="installation.html">Installation Guide</a>
@@ -25,9 +25,9 @@
     </nav>
     <div class="hero">
       <div>
-        <div class="badge">Powerpoint Guide</div>
-        <h1>Powerpoint template guide</h1>
-        <p>As written in pptx_template_editing.md.</p>
+        <div class="badge">Template Guide</div>
+        <h1>PowerPoint and Item Slip template guide</h1>
+        <p>As written in template_editing.md.</p>
       </div>
     </div>
   </header>
@@ -50,25 +50,25 @@
   <script>
     (function () {
       const container = document.getElementById('doc-content');
-      const mdFilename = 'pptx_template_editing.md';
+      const mdFilename = 'template_editing.md';
       const candidates = [
-        mdFilename,
-        '../' + mdFilename,
-        '/' + mdFilename,
-        'https://github.com/coastie-uk/convention-auction/blob/main/source/' + mdFilename + '?raw=true'
+        new URL(mdFilename, window.location.href).href,
+        'https://raw.githubusercontent.com/coastie-uk/convention-auction/main/docs/' + mdFilename
 
       ];
 
       async function fetchFirst(urls) {
+        const failures = [];
         for (const u of urls) {
           try {
             const res = await fetch(u, { cache: 'no-cache' });
             if (res.ok) return await res.text();
+            failures.push(u + ' returned HTTP ' + res.status);
           } catch (e) {
-            // try next
+            failures.push(u + ' failed: ' + e.message);
           }
         }
-        throw new Error('Could not fetch markdown file from /source/');
+        throw new Error('Could not fetch ' + mdFilename + '. ' + failures.join('; '));
       }
 
       function renderMarkdown(md) {
@@ -85,7 +85,7 @@
       fetchFirst(candidates)
         .then(renderMarkdown)
         .catch(err => {
-          container.innerHTML = '<p>Documentation not available. Make sure <code>/source/pptx_template_editing.md</code> is deployed alongside the site.</p>';
+          container.innerHTML = '<p>Documentation not available. Serve this site over HTTP and make sure <code>template_editing.md</code> is alongside this page.</p>';
           console.error(err);
         });
     })();

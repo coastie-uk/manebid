@@ -89,9 +89,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const importItemsTableBody = document.getElementById("import-items-table-body");
     const runImportItemsButton = document.getElementById("run-import-items");
     const aboutVersionSummaryEl = document.getElementById("about-version-summary");
-    const aboutDatabaseIdEl = document.getElementById("about-database-id");
-    const aboutDatabaseCreatedAtEl = document.getElementById("about-database-created-at");
-    const aboutDatabaseCreatedByBackendEl = document.getElementById("about-database-created-by-backend");
+    const aboutDatabaseEntryEl = document.getElementById("about-database-entry");
     const aboutDatabaseRestoreEl = document.getElementById("about-database-restore");
     const aboutBackendUptimeEl = document.getElementById("about-backend-uptime");
     const exportTypeInputs = Array.from(document.querySelectorAll('input[name="export-type"]'));
@@ -2031,9 +2029,12 @@ document.addEventListener("DOMContentLoaded", function () {
         const schema = versions?.schema || "Unknown";
         const payment = versions?.payment_processor || "Unknown";
         if (aboutVersionSummaryEl) aboutVersionSummaryEl.textContent = `Backend ${backend} / Schema ${schema} / Payment ${payment}`;
-        if (aboutDatabaseIdEl) aboutDatabaseIdEl.textContent = versions?.database_id || "Unknown";
-        if (aboutDatabaseCreatedAtEl) aboutDatabaseCreatedAtEl.textContent = formatDateTime(versions?.database_created_at);
-        if (aboutDatabaseCreatedByBackendEl) aboutDatabaseCreatedByBackendEl.textContent = versions?.database_created_by_backend_version || "Unknown";
+        if (aboutDatabaseEntryEl) {
+            const databaseId = versions?.database_id || "Unknown";
+            const createdAt = formatDateTime(versions?.database_created_at);
+            const createdByBackend = versions?.database_created_by_backend_version || "Unknown";
+            aboutDatabaseEntryEl.textContent = `ID ${databaseId}, Created ${createdAt} By Backend ${createdByBackend}`;
+        }
         if (aboutDatabaseRestoreEl) aboutDatabaseRestoreEl.textContent = formatRestoreSummary(versions || {});
         if (aboutBackendUptimeEl) aboutBackendUptimeEl.textContent = formatUptime(versions?.last_started_at);
     }

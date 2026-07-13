@@ -195,7 +195,7 @@ Below is a description of each setting:
 | `MAX_ITEMS` | number | `2000` | Max items across auctions. Range: **1–10000**. |
 | `ITEM_PHOTO_MAX_MB` | number | `10` | Maximum item photo upload size in megabytes. Range: **1–50**. |
 | `RESOURCE_IMAGE_MAX_MB` | number | `10` | Maximum size of one maintenance resource image in megabytes. Range: **1–50**. |
-| `RESOURCE_UPLOAD_MAX_FILES` | number | `20` | Maximum resource images accepted in one request. Range: **1–MAX_UPLOADS**. |
+| `RESOURCE_UPLOAD_MAX_FILES` | number | `50` | Maximum resource images accepted in one request. Range: **1–MAX_UPLOADS**. |
 | `BACKUP_UPLOAD_MAX_MB` | number | `512` | Maximum compressed managed-backup upload and archive size in megabytes. Range: **1–16384**. |
 | `BACKUP_ARCHIVE_MAX_EXPANDED_MB` | number | `2048` | Maximum cumulative expanded size while inspecting or restoring a backup in megabytes. Range: **1–65536**. |
 | `BACKUP_ARCHIVE_MAX_ENTRY_MB` | number | `512` | Maximum expanded size of one backup entry in megabytes. Range: **1–BACKUP_ARCHIVE_MAX_EXPANDED_MB**. |
@@ -210,7 +210,7 @@ Below is a description of each setting:
 | `SERVICE_NAME` | text | `"manebid-backend"` | Service name used in logs/process metadata. Length **1–100** characters. |
 | `MESSAGING_ENABLED` | boolean | `true` | Enable operator messaging on management pages. |
 | `MESSAGING_MAX_MESSAGES` | number | `1000` | Maximum number of operator messages kept in the backend message cache. Range: **1–100000**. |
-| `MESSAGING_MAX_CACHE_BYTES` | number | `1048576` | Maximum estimated bytes kept in the backend message cache. Range: **1024–52428800**. |
+| `MESSAGING_MAX_CACHE_BYTES` | number | `5000000` | Maximum estimated bytes kept in the backend message cache. Range: **1024–52428800**. |
 | `MESSAGING_MAX_MESSAGE_CHARS` | number | `500` | Maximum length of one operator message in characters. Range: **1–5000**. |
 | `MESSAGING_OPEN_POLL_MS` | number | `3000` | Poll interval in milliseconds while the operator messaging modal is open. Range: **1000–60000**. |
 | `MESSAGING_PRESENCE_TTL_MS` | number | `90000` | How long in milliseconds a recent messaging poll counts a user as online. Range: **5000–3600000**. |
@@ -314,23 +314,23 @@ You should see a number of log entries similar to those shown below. Any errors 
 
 ```
 [WARN] [unknown] [General] Database file not found; creating new database at /var/lib/manebid/manebid.db
-[WARN] [unknown] [General] Schema version missing or mismatched (db=missing, expected=2.4); Running DB se>
+[WARN] [unknown] [General] Schema version missing or mismatched (db=missing, expected=3.1); Running DB setup
 [WARN] [unknown] [General] Created default root account with full permissions.
 [WARN] [unknown] [General] Initial root password (shown once): [Random password]
 [INFO] [unknown] [General] Database opened
 [INFO] [unknown] [General] ~~ Starting up Auction backend ~~
 [INFO] [unknown] [Logger] Logging framework initialized.
-[INFO] [unknown] [General] Backend version: 2.1.0, DB schema version: 2.4
-[INFO] [unknown] [General] Payment processor: SumUp 1.2.0(2026-02-09)
+[INFO] [unknown] [General] Backend version: 3.1.0, DB schema version: 3.1
+[INFO] [unknown] [General] Payment processor: SumUp 1.3.0(2026-07-05)
 [INFO] [unknown] [Logger] Log level set to DEBUG
 [INFO] [unknown] [General] CORS is disabled.
-[INFO] [unknown] [General] Server startup complete and listening on port 3000
+[INFO] [unknown] [General] Server startup complete and listening on 127.0.0.1:3000
 ```
 
 On first run the backend will:
     Create the database
     Create a logfile
-    Create a root user and set the intial password
+    Create a root user and set the initial password
     Generate default pptx config files
     Copy default image resource files into the required folder
 
@@ -396,7 +396,7 @@ Paste and edit the config to include your domain name. If you already have SSL k
 <VirtualHost *:443>
     ServerName yourdomain.com
 
-#   If you have your own certificatesm insert them here. Otherwise leave as-is and let CertBot update the file
+#   If you have your own certificates, insert them here. Otherwise leave as-is and let CertBot update the file
 #   SSLEngine on
 #   SSLCertificateFile /etc/letsencrypt/live/yourdomain.com/fullchain.pem
 #   SSLCertificateKeyFile /etc/letsencrypt/live/yourdomain.com/privkey.pem
@@ -468,14 +468,9 @@ Restart Apache if changes don’t take effect:
 
 To test your installation, go to [Your URL]/maint. Login as "root" and the initial password you noted earlier. The "security" tab can be used to create additional users as required. 
 
-For futher instructions, see quickstart.md
+For further instructions, see quickstart.md
 
 For instructions for setting up SumUp, see sumup_setup.md
-
-Additional changes
-
-If required, update front-end browser icon (/images/favicon.png)
-If required, update default auction logo (/resources/default_logo.png)
 
 ---
 

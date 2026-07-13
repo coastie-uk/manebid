@@ -79,8 +79,8 @@ the merchant account that owns the terminal transaction.
 | --- | --- | --- |
 | `SUMUP_WEB_ENABLED` | intent creation | Enables hosted checkout creation. |
 | `SUMUP_CARD_PRESENT_ENABLED` | intent creation | Enables SumUp app deep-link payments. |
-| `SUMUP_API_KEY` | hosted checkout, verification | Bearer token for SumUp API calls. |
-| `SUMUP_MERCHANT_CODE` | hosted checkout, verification | Merchant account that receives or owns payments. |
+| `SUMUP_API_KEY` | hosted checkout, verification | Bearer token for SumUp API calls. Required when either SumUp channel is enabled. |
+| `SUMUP_MERCHANT_CODE` | hosted checkout, verification | Merchant account that receives or owns payments. Required when either SumUp channel is enabled. |
 | `SUMUP_RETURN_URL` | hosted checkout | URL supplied to SumUp when creating hosted checkouts. |
 | `SUMUP_AFFILIATE_KEY` | app deep link | SumUp app affiliate key. |
 | `SUMUP_APP_ID` | app deep link | SumUp app identifier. |
@@ -89,10 +89,19 @@ the merchant account that owns the terminal transaction.
 | `PAYMENT_TTL_MIN` | local intents | Local pending intent expiry window. |
 | `CURRENCY` | all payment flows | Currency used in SumUp and local records. |
 
+`backend/config.js` validates the SumUp environment in layers:
+
+- if either `SUMUP_WEB_ENABLED` or `SUMUP_CARD_PRESENT_ENABLED` is true,
+  `SUMUP_API_KEY` and `SUMUP_MERCHANT_CODE` must be present;
+- if `SUMUP_WEB_ENABLED` is true, `SUMUP_RETURN_URL` must also be present;
+- if `SUMUP_CARD_PRESENT_ENABLED` is true, `SUMUP_AFFILIATE_KEY`,
+  `SUMUP_APP_ID`, `SUMUP_CALLBACK_SUCCESS`, and `SUMUP_CALLBACK_FAIL` must
+  also be present.
+
 If a channel is enabled but the related SumUp values are wrong, payment launch
-may still partially work, but finalization will not. In particular,
-card-present app payments need a `SUMUP_API_KEY` and `SUMUP_MERCHANT_CODE` for
-the merchant account where SumUp records the terminal transaction.
+may still partially work, but finalization will not. Card-present app payments
+need a `SUMUP_API_KEY` and `SUMUP_MERCHANT_CODE` for the merchant account where
+SumUp records the terminal transaction.
 
 ## Local Data Model
 

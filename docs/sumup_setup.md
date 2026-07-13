@@ -1,6 +1,6 @@
 # SumUp Payments – Server Operator Setup Guide
 
-This document explains how SumUp payments are integrated into the Auction system and what a server operator needs to configure to make card payments work reliably.
+This document explains how SumUp payments are integrated into ManeBid and what a server operator needs to configure to make card payments work reliably.
 
 The backend is coded defensively and does not handle card data directly, but most of the real security comes from how you run the server. Operate the app as a dedicated service user, lock down file permissions (especially `.env`, which should be readable only by the service), use strong and unique server/app passwords, keep the OS and packages patched, and enable basic hardening such as firewalls, SSH key auth, and restricted outbound access. Protect backups, monitor logs, and limit who can access the host; a secure server setup is the best way to protect payment-related operations.
 
@@ -15,7 +15,7 @@ To complete the steps in this guide, you will need to have access:
 At a high level, SumUp payments follow this flow:
 
 ```
-Payment initated on cashier page
+Payment initiated on cashier page
    ↓
 Payment intent created on server and sent to SumUp
    ↓
@@ -98,7 +98,7 @@ Card-present verification uses the same API key and merchant code. The key must
 include the SumUp OAuth/API scope `transactions.history`, which permits the
 backend to retrieve a transaction by `foreign_transaction_id`.
 
-These values must be kept confidential. Do not share them unncesserially as they allow access into your merchant account
+These values must be kept confidential. Do not share them unnecessarily as they allow access into your merchant account.
 ---
 
 ## 3. Environment variables (.env configuration)
@@ -131,9 +131,8 @@ SUMUP_CARD_PRESENT_ENABLED=true
 
 Notes:
 
-- If a payment method is enabled, the related fields must be populated
-- Card-present payments can still open the SumUp app without API credentials,
-  but they remain pending until direct verification is available
+- If a SumUp payment method is enabled, the related fields must be populated before the backend will start.
+- `SUMUP_API_KEY` and `SUMUP_MERCHANT_CODE` are required for both web payments and card-present payments, because ManeBid verifies app payments directly with SumUp before recording them.
 - `SUMUP_API_KEY` requires the `transactions.history` scope for card-present verification
 - All URLs **must be HTTPS**
 - Certificates **must be valid and not expired**
@@ -212,12 +211,12 @@ Once you have confirmed connection, it is recommended to run a live test. Initia
 
 SumUp supports sandbox accounts for web checkouts but not app payments. If using a sandbox account, it is easy to simulate web payments using one of the publicly listed test credit card numbers. Note that failing to complete a web checkout (e.g. by failing to submit the payment) does not return anything to your server - This doesn't cause an issue as the payment intent will time out and expire automatically.
 
-## 7. Operational recommendations
+## 5. Operational recommendations
 
 - Monitor SSL certificate expiry (this is the most common real-world failure)
 - Use the maintenance UI / diagnostics to confirm reachability after changes
 
-## 8. Summary
+## 6. Summary
 
 To enable SumUp payments successfully, the server operator must:
 

@@ -8,14 +8,14 @@
   <script src="/scripts/page-bootstrap.js"></script>
   <link rel="stylesheet" href="/styles/admin-styles.css" />
   <link rel="stylesheet" href="/styles/maintenance.css" />
-  <link rel="icon" type="image/png" href="/images/favicon.png" />
+  <link rel="icon" type="image/png" href="/images/favicon.ico" />
 </head>
 <body>
   <main>
   <section id="login-section" style="display: none;">
       <div class="login-container">
         <div class="brand-lockup">
-          <h2 class="app-wordmark">ManeBid</h2>
+          <img class="app-logo" src="/images/manebid_logo.png" alt="ManeBid">
           <p class="app-tagline">Convention Auction Manager</p>
         </div>
         <h3>Maintenance Login</h3>
@@ -29,7 +29,7 @@
     <section id="maintenance-section" style="display:none;">
       <div class="sticky-controls">
         <div class="menu-bar">
-          <span class="top-bar-wordmark app-wordmark">ManeBid</span>
+          <span class="top-bar-wordmark app-wordmark"><span class="app-wordmark__mane">Mane</span><span class="app-wordmark__bid">Bid</span></span>
           <details class="menu-group">
             <summary class="menu-trigger">Open</summary>
             <div class="menu-panel">
@@ -697,16 +697,14 @@
         <div class="app-modal-card">
           <div class="app-modal-header">
             <div>
-              <h3>About <span class="app-wordmark app-wordmark--inline">ManeBid</span></h3>
-              <p class="about-branding"><span class="app-tagline">Convention Auction Manager</span><span class="about-context">Current software and database details for this installation.</span></p>
+              <h3>About <span class="app-wordmark app-wordmark--inline"><span class="app-wordmark__mane">Mane</span><span class="app-wordmark__bid">Bid</span></span></h3>
+              <p class="about-branding"><span class="app-tagline">Convention Auction Manager</span></p>
             </div>
             <button id="close-about-modal" type="button" class="app-modal-close" aria-label="Close about dialog">Close</button>
           </div>
           <div class="about-grid">
             <div class="about-row"><span>Software</span><strong id="about-version-summary">Unknown</strong></div>
-            <div class="about-row"><span>Database ID</span><strong id="about-database-id">Unknown</strong></div>
-            <div class="about-row"><span>Database created</span><strong id="about-database-created-at">Unknown</strong></div>
-            <div class="about-row"><span>Created by backend</span><strong id="about-database-created-by-backend">Unknown</strong></div>
+            <div class="about-row"><span>Database</span><strong id="about-database-entry">Unknown</strong></div>
             <div class="about-row"><span>Last restore</span><strong id="about-database-restore">Never</strong></div>
             <div class="about-row"><span>Backend uptime</span><strong id="about-backend-uptime">Unknown</strong></div>
           </div>

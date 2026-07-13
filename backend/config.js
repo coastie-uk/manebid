@@ -45,15 +45,18 @@ if (!SECRET_KEY || SECRET_KEY.trim().length < 16) {
 }
 
 const SUMUP_WEB_ENABLED = parseBoolEnv('SUMUP_WEB_ENABLED', false);
+const SUMUP_CARD_PRESENT_ENABLED = parseBoolEnv('SUMUP_CARD_PRESENT_ENABLED', false);
 
-requireGroupIfEnabled(SUMUP_WEB_ENABLED, 'SumUp Web Payments', [
+// SumUp uses these credentials for hosted checkout creation and for
+// server-side verification/finalisation of both hosted and app payments.
+requireGroupIfEnabled(SUMUP_WEB_ENABLED || SUMUP_CARD_PRESENT_ENABLED, 'SumUp Payments', [
   'SUMUP_API_KEY',
-  'SUMUP_MERCHANT_CODE',
-  'SUMUP_RETURN_URL'
+  'SUMUP_MERCHANT_CODE'
 ]);
 
-// SumUp: card-present via deep link
-const SUMUP_CARD_PRESENT_ENABLED = parseBoolEnv('SUMUP_CARD_PRESENT_ENABLED', false);
+requireGroupIfEnabled(SUMUP_WEB_ENABLED, 'SumUp Web Payments', [
+  'SUMUP_RETURN_URL'
+]);
 
 requireGroupIfEnabled(SUMUP_CARD_PRESENT_ENABLED, 'SumUp Card-Present Payments', [
   'SUMUP_AFFILIATE_KEY',
@@ -287,8 +290,6 @@ try {
     PAYMENT_TTL_MIN: Number(process.env.PAYMENT_INTENT_TTL_MINUTES || 20),
 
     CURRENCY: validateSumupCurrency(process.env.CURRENCY, 'GBP'),
-
-    SUMUP_APP_INDIRECT_ENABLED: parseBoolEnv('SUMUP_APP_INDIRECT_ENABLED', false),
 
     //other payment method toggles
     CASH_ENABLED: parseBoolEnv('CASH_PAYMENT_ENABLED', true),

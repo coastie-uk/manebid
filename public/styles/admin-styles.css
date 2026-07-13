@@ -43,14 +43,18 @@
 }
 
 .app-wordmark {
-    background: linear-gradient(100deg, var(--brand-mane), var(--brand-bid));
-    background-clip: text;
     color: var(--brand-mane);
     font-family: "Fredoka", "Trebuchet MS", sans-serif;
     font-weight: 700;
-    letter-spacing: -0.025em;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    letter-spacing: 0;
+}
+
+.app-wordmark__mane {
+    color: var(--brand-mane);
+}
+
+.app-wordmark__bid {
+    color: var(--brand-bid);
 }
 
 .app-wordmark--inline {
@@ -83,9 +87,9 @@
 }
 
 @media (forced-colors: active) {
-    .app-wordmark {
-        background: none;
-        -webkit-text-fill-color: currentColor;
+    .app-wordmark__mane,
+    .app-wordmark__bid {
+        color: currentColor;
     }
 }
 
@@ -2487,6 +2491,14 @@ footer {
     font-size: 2rem;
     line-height: 1;
     margin: 0;
+}
+
+.login-container .brand-lockup .app-logo {
+    display: block;
+    width: 140px;
+    max-width: 100%;
+    height: auto;
+    margin: 0 auto;
 }
 
 .login-container .brand-lockup .app-tagline {

@@ -71,16 +71,16 @@
     width: 100%;
     height: auto;
     object-fit: contain;
-    background: #0b1220;
+    background: var(--bg-alt);
     border-radius: 16px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+    border: 1px solid var(--outline);
+    box-shadow: var(--shadow);
     transition: border-color 0.2s ease, transform 0.2s ease;
   }
 
   .guide-figure a:hover .guide-screenshot,
   .guide-figure a:focus-visible .guide-screenshot {
-    border-color: rgba(46, 196, 182, 0.8);
+    border-color: var(--accent);
     transform: translateY(-2px);
   }
 
@@ -145,19 +145,19 @@
   .toc-links a:hover,
   .toc-links a:focus-visible {
     color: var(--text);
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--panel-subtle);
   }
 
   .toc-links a.active,
   .toc-links a[aria-current="location"] {
     color: var(--text);
-    background: rgba(46, 196, 182, 0.12);
-    border-left-color: var(--accent-2);
+    background: var(--panel-subtle);
+    border-left-color: var(--accent);
   }
 
   .menu-map {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: var(--bg-alt);
+    border: 1px solid var(--outline);
     border-radius: 16px;
     display: grid;
     gap: 14px;
@@ -168,8 +168,8 @@
   }
 
   .menu-map-group {
-    background: rgba(0, 0, 0, 0.14);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: var(--panel);
+    border: 1px solid var(--outline);
     border-radius: 14px;
     min-width: 0;
     padding: 12px;
@@ -177,7 +177,7 @@
 
   .menu-map-group h3 {
     align-items: center;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    border-bottom: 1px solid var(--outline);
     display: flex;
     font-size: 1rem;
     gap: 8px;
@@ -204,7 +204,7 @@
   }
 
   .menu-map-group li {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--panel-subtle);
     border-radius: 999px;
     color: var(--muted);
     font-size: 0.92rem;
@@ -226,8 +226,8 @@
   }
 
   .doc-note {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: var(--panel-subtle);
+    border: 1px solid var(--outline);
     border-left: 4px solid var(--accent);
     border-radius: 16px;
     margin: 16px 0 24px;
@@ -242,8 +242,8 @@
   }
 
   .icon-legend-item {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: var(--panel);
+    border: 1px solid var(--outline);
     border-radius: 16px;
     padding: 14px 12px;
     text-align: center;
@@ -287,12 +287,12 @@
   }
 
   .function-matrix .tick-yes {
-    color: var(--accent-2);
+    color: var(--accent-3);
     font-weight: 600;
   }
 
   .function-matrix .tick-no {
-    color: #ff6b6b;
+    color: var(--brand-bid);
     font-weight: 600;
   }
 
@@ -311,7 +311,7 @@
     background: var(--panel);
     border: 1px solid var(--outline);
     border-radius: 18px;
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+    box-shadow: 0 24px 80px rgba(10, 30, 60, 0.24);
   }
 
   .screenshot-dialog::backdrop {
@@ -350,7 +350,7 @@
     min-height: 42px;
     padding: 8px 12px;
     color: var(--text);
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--bg-alt);
     border: 1px solid var(--outline);
     border-radius: 10px;
     cursor: pointer;
@@ -359,8 +359,8 @@
 
   .screenshot-dialog button:hover,
   .screenshot-dialog button:focus-visible {
-    background: rgba(46, 196, 182, 0.18);
-    border-color: rgba(46, 196, 182, 0.65);
+    background: var(--panel-subtle);
+    border-color: var(--accent);
   }
 
   .screenshot-dialog button:disabled {
@@ -374,7 +374,7 @@
     min-height: 0;
     padding: 18px;
     overflow: auto;
-    background: #070c16;
+    background: var(--bg-alt);
   }
 
   .screenshot-dialog-image {
@@ -620,7 +620,7 @@ document.addEventListener("DOMContentLoaded", () => {
 <body>
   <header>
     <nav class="nav">
-      <div class="brand brand-lockup"><span class="app-wordmark">ManeBid</span><span class="app-tagline">Convention Auction Manager</span></div>
+      <div class="brand brand-lockup"><span class="app-wordmark"><span class="app-wordmark__mane">Mane</span><span class="app-wordmark__bid">Bid</span></span><span class="app-tagline">Convention Auction Manager</span></div>
       <div class="nav-links">
         <a href="index.html">Home</a>
         <a href="installation.html">Installation Guide</a>
@@ -632,7 +632,7 @@ document.addEventListener("DOMContentLoaded", () => {
     </nav>
     <div class="hero">
       <div>
-        <div class="badge brand-lockup brand-lockup--inline"><span class="app-wordmark">ManeBid</span><span class="app-tagline">Convention Auction Manager</span></div>
+        <div class="badge brand-lockup brand-lockup--inline"><span class="app-wordmark"><span class="app-wordmark__mane">Mane</span><span class="app-wordmark__bid">Bid</span></span><span class="app-tagline">Convention Auction Manager</span></div>
         <h1>User Guide</h1>
       </div>
     </div>
@@ -1153,6 +1153,9 @@ document.addEventListener("DOMContentLoaded", () => {
             <li><strong>Payment screen:</strong> each payment captures a payment amount, an optional donation amount, and an optional note.</li>
             <li><strong>Donation rule:</strong> a donation can only be added when the full outstanding balance is being paid.</li>
             <li><strong>Settlement state:</strong> payment buttons are disabled unless the auction is in <strong>settlement</strong>.</li>
+            <li><strong>Pending SumUp payments:</strong> starting a SumUp payment creates a pending payment card for that bidder. While it is pending, further SumUp payments for the same bidder are blocked to prevent duplicate charges.</li>
+            <li><strong>SumUp recovery controls:</strong> pending payments can be checked manually with <strong>Check now</strong>, reopened with <strong>Open checkout</strong> for hosted web payments, or stopped with <strong>Cancel</strong>. Cancelling stops ManeBid waiting for that intent; it does not refund or cancel a charge already completed in SumUp.</li>
+            <li><strong>SumUp verification:</strong> ManeBid records the payment only after SumUp returns matching transaction details. If verification is unavailable, still pending, or mismatched, the payment remains pending and the bidder balance is not changed.</li>
             <li><strong>Refunds:</strong> recorded payments can be reversed from the payments table. A reason is required.</li>
             <li><strong>Receipt printing:</strong> <strong>Print receipt</strong> generates a narrow settlement receipt showing paddle number, optional bidder name, lots won, payments, total donations, amount due, operator name, and the bidder fingerprint when available.</li>
             <li><strong>Fingerprint display:</strong> <strong>Show fingerprint</strong> reveals the current bidder fingerprint. This allows staff to verify the identity of the bidder at collection.</li>
@@ -1164,6 +1167,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 <img class="guide-screenshot" src="screenshots/manage-payments/04-payment-entry-modal.png" alt="Cash payment modal with payment amount, donation, note, and record controls" loading="lazy" decoding="async">
               </a>
               <figcaption><strong>Record payment:</strong> enter the payment, optional donation, and note.</figcaption>
+            </figure>
+            <figure class="guide-figure">
+              <a class="screenshot-link" href="screenshots/manage-payments/06-sumup-pending.png">
+                <img class="guide-screenshot" src="screenshots/manage-payments/06-sumup-pending.png" alt="Manage Payments view showing a pending SumUp payment card with recovery controls" loading="lazy" decoding="async">
+              </a>
+              <figcaption><strong>Pending SumUp payment:</strong> track a waiting SumUp payment, reopen the checkout, check for confirmation, or cancel the pending intent.</figcaption>
             </figure>
             <figure class="guide-figure">
               <a class="screenshot-link" href="screenshots/manage-payments/05-auction-summary-modal.png">
@@ -1454,8 +1463,8 @@ document.addEventListener("DOMContentLoaded", () => {
             <li><strong>Add New Auction</strong> opens a modal with fields for the display name, URL tag, and logo.</li>
             <li><strong>Generate QR Code</strong> opens a modal for a static public auction URL PNG. The root URL is editable, the <code>?auction=URL-tag</code> section is fixed, and options include foreground/background hex colours, output size, and an optional centre image from Image Management.</li>
             <li><strong>Generate Test Data</strong> opens a row-specific modal for creating test items and bids or deleting generated bids. The selected auction and current state are displayed at the top of the modal.</li>
-            <li><strong>Test item confirmation:</strong> confirmation is required before adding items. The confirmation warns when the auction is not in <code>setup</code> or <code>locked</code>.</li>
-            <li><strong>Test bid confirmation:</strong> confirmation is required before adding bids. The confirmation warns when the auction is not in <code>live</code> or <code>settlement</code>.</li>
+            <li><strong>Test item confirmation:</strong> confirmation is required before adding items. Test items can be generated in <code>setup</code>, <code>locked</code>, <code>live</code>, or <code>settlement</code>.</li>
+            <li><strong>Test bid confirmation:</strong> confirmation is required before adding bids. Test bids can be generated or deleted in <code>setup</code>, <code>locked</code>, <code>live</code>, or <code>settlement</code>.</li>
             <li><strong>Edit Auction</strong> opens a modal for the auction name, URL tag, logo, auction status, and the <strong>Allow admins to change the auction state</strong> checkbox.</li>
             <li><strong>Right-click menu:</strong> right-click an auction row to open a context menu headed by the auction name. It includes <strong>Generate QR code</strong>, <strong>Edit auction</strong>, <strong>Generate test data/bids</strong>, <strong>Open public page</strong>, <strong>Manage Items</strong>, <strong>Set status</strong>, <strong>Manage Items can set state</strong>, <strong>Reset auction</strong>, <strong>Purge deleted items</strong>, and <strong>Delete auction</strong>.</li>
             <li><strong>Context menu status:</strong> <strong>Set status</strong> opens a submenu with the current auction status ticked. <strong>Manage Items can set state</strong> is ticked when Manage Items users are allowed to change state, and selecting it toggles that setting.</li>
@@ -1510,6 +1519,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <li><strong>Restore Backup</strong> opens a restore modal with separate checkboxes for <strong>Database</strong>, <strong>Photos</strong>, and <strong>Resources + Configs</strong>.</li>
             <li><strong>Restore Log</strong> is stored after a restore completes and can be saved to disk.</li>
             <li><strong>Import Preview Checks</strong> highlight imported schema and database ID differences against the live server, and imports are blocked when the schema major version differs.</li>
+            <li><strong>Restore Database permission:</strong> creating and viewing backups is available from Manage Auctions, but backup import, backup download, and restore actions require the separate <strong>Restore Database</strong> permission.</li>
           </ul>
 
           <h3>Manage Auctions Backup Action Icons</h3>
@@ -1601,10 +1611,11 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="section">
           <h2>Manage Users</h2>
           <ul class="compact-list">
-            <li><strong>User table:</strong> each row shows read-only ticks for <strong>Manage Items</strong>, <strong>Manage Payments</strong>, <strong>Manage Auctions</strong>, <strong>Slideshow</strong>, <strong>Manage Collections</strong>, <strong>Manage Bids</strong>, and <strong>Manage Users</strong>.</li>
-            <li><strong>Permission dependencies:</strong> <strong>Manage Bids</strong> requires <strong>Manage Items</strong>, and <strong>Manage Users</strong> requires <strong>Manage Auctions</strong>.</li>
+            <li><strong>User table:</strong> each row shows read-only ticks for <strong>Manage Items</strong>, <strong>Manage Payments</strong>, <strong>Manage Auctions</strong>, <strong>Slideshow</strong>, <strong>Manage Collections</strong>, <strong>Manage Bids</strong>, <strong>Manage Users</strong>, and <strong>Restore Database</strong>.</li>
+            <li><strong>Permission dependencies:</strong> <strong>Manage Bids</strong> requires <strong>Manage Items</strong>; <strong>Manage Users</strong> and <strong>Restore Database</strong> require <strong>Manage Auctions</strong>.</li>
             <li><strong>Add User</strong> creates the initial password and assigns one or more roles or permissions in a single form.</li>
             <li><strong>Edit User</strong> opens the selected user. Allows password and permissions to be edited.</li>
+            <li><strong>Restore Database:</strong> grant this only to operators who should be allowed to import, download, or restore managed backup archives.</li>
             <li><strong>Remote logout:</strong> maintenance can force another user out of all current sessions. That user is redirected to the shared login page with a remote logout message.</li>
           </ul>
 
@@ -1744,7 +1755,7 @@ document.addEventListener("DOMContentLoaded", () => {
               <td>Manage Items</td>
               <td class="tick-yes">Yes</td>
               <td class="tick-yes">Yes</td>
-              <td class="tick-no">No</td>
+              <td class="tick-yes">Yes</td>
               <td class="tick-no">No</td>
               <td class="tick-no">No</td>
             </tr>
@@ -1870,17 +1881,17 @@ document.addEventListener("DOMContentLoaded", () => {
               <td>Manage Auctions</td>
               <td class="tick-yes">Yes</td>
               <td class="tick-yes">Yes</td>
-              <td class="tick-no">No</td>
-              <td class="tick-no">No</td>
+              <td class="tick-yes">Yes</td>
+              <td class="tick-yes">Yes</td>
               <td class="tick-no">No</td>
             </tr>
             <tr>
               <td>Generate test bids</td>
               <td>Manage Auctions</td>
-              <td class="tick-no">No</td>
-              <td class="tick-no">No</td>
               <td class="tick-yes">Yes</td>
-              <td class="tick-no">No</td>
+              <td class="tick-yes">Yes</td>
+              <td class="tick-yes">Yes</td>
+              <td class="tick-yes">Yes</td>
               <td class="tick-no">No</td>
             </tr>
             <tr>

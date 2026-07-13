@@ -57,15 +57,16 @@
     openAboutModalBtn: $('open-about-modal'),
     closeAboutModalBtn: $('close-about-modal'),
     aboutVersionSummary: $('about-version-summary'),
-    aboutDatabaseId: $('about-database-id'),
-    aboutDatabaseCreatedAt: $('about-database-created-at'),
-    aboutDatabaseCreatedByBackend: $('about-database-created-by-backend'),
+    aboutDatabaseEntry: $('about-database-entry'),
     aboutDatabaseRestore: $('about-database-restore'),
     aboutBackendUptime: $('about-backend-uptime')
   };
 
   const menuGroups = Array.from(document.querySelectorAll('.menu-group'));
-  const SAFE_PHOTO_FILENAME = /^resized_[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.jpg$/i;
+  // Photos created by normal uploads use UUIDs, while generated sample lots
+  // use names such as resized_sample_1759353388675_30.jpg. Keep the basename
+  // allowlist strict, but accept both app-generated formats.
+  const SAFE_PHOTO_FILENAME = /^resized_[a-z0-9][a-z0-9_-]*\.jpg$/i;
   const safePhotoFilename = value => {
     const text = String(value ?? '').trim();
     return SAFE_PHOTO_FILENAME.test(text) ? text : '';
@@ -188,9 +189,12 @@
     const schema = versions?.schema || 'Unknown';
     const payment = versions?.payment_processor || 'Unknown';
     if (els.aboutVersionSummary) els.aboutVersionSummary.textContent = `Backend ${backend} / Schema ${schema} / Payment ${payment}`;
-    if (els.aboutDatabaseId) els.aboutDatabaseId.textContent = versions?.database_id || 'Unknown';
-    if (els.aboutDatabaseCreatedAt) els.aboutDatabaseCreatedAt.textContent = formatDateTime(versions?.database_created_at);
-    if (els.aboutDatabaseCreatedByBackend) els.aboutDatabaseCreatedByBackend.textContent = versions?.database_created_by_backend_version || 'Unknown';
+    if (els.aboutDatabaseEntry) {
+      const databaseId = versions?.database_id || 'Unknown';
+      const createdAt = formatDateTime(versions?.database_created_at);
+      const createdByBackend = versions?.database_created_by_backend_version || 'Unknown';
+      els.aboutDatabaseEntry.textContent = `ID ${databaseId}, Created ${createdAt} By Backend ${createdByBackend}`;
+    }
     if (els.aboutDatabaseRestore) els.aboutDatabaseRestore.textContent = formatRestoreSummary(versions || {});
     if (els.aboutBackendUptime) els.aboutBackendUptime.textContent = formatUptime(versions?.last_started_at);
   }

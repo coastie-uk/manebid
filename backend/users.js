@@ -17,6 +17,7 @@ const { LOG_DIR } = require('./config');
 const USERNAME_REGEX = /^[a-z0-9._-]{3,64}$/;
 const ADMIN_SORT_FIELDS = new Set(['item_number', 'description', 'contributor', 'artist', 'paddle_number', 'hammer_price']);
 const ADMIN_SORT_ORDERS = new Set(['asc', 'desc']);
+const ADMIN_PHOTO_PREVIEW_SIZES = new Set(['small', 'medium', 'large']);
 const LIVE_FEED_BUCKET_SORT_ORDERS = new Set(['paddle', 'ready_state', 'last_update', 'last_paid']);
 const THEME_MODES = new Set(['light', 'dark', 'system']);
 const VIEW_PRIORITY = Object.freeze([
@@ -92,12 +93,14 @@ function normaliseAdminPreferences(raw) {
   const auctionId = normalisePositiveInteger(source.selected_auction_id);
   const sortField = normaliseString(source.sort_field);
   const sortOrder = normaliseString(source.sort_order);
+  const photoPreviewSize = normaliseString(source.photo_preview_size);
   const showBidderNames = normaliseBoolean(source.show_bidder_names);
   const showDeleted = normaliseBoolean(source.show_deleted);
 
   if (auctionId !== undefined) result.selected_auction_id = auctionId;
   if (ADMIN_SORT_FIELDS.has(sortField)) result.sort_field = sortField;
   if (ADMIN_SORT_ORDERS.has(sortOrder)) result.sort_order = sortOrder;
+  if (ADMIN_PHOTO_PREVIEW_SIZES.has(photoPreviewSize)) result.photo_preview_size = photoPreviewSize;
   if (showBidderNames !== undefined) result.show_bidder_names = showBidderNames;
   if (showDeleted !== undefined) result.show_deleted = showDeleted;
   return result;

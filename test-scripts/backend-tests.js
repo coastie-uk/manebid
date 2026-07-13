@@ -924,6 +924,8 @@ addTest("B-007a","POST /preferences saves normalized preferences and persists to
       selected_auction_id: testData.auctionId,
       sort_field: "description",
       sort_order: "desc",
+      photo_preview_size: "large",
+      show_bidder_names: true,
       show_deleted: true
     },
     cashier: {
@@ -959,6 +961,8 @@ addTest("B-007b","POST /preferences normalizes malformed payload", async () => {
       selected_auction_id: -9,
       sort_field: "nope",
       sort_order: "sideways",
+      photo_preview_size: "huge",
+      show_bidder_names: "yes",
       show_deleted: "yes"
     },
     cashier: {
