@@ -1,7 +1,5 @@
 # ManeBid 3.1 Release Notes
 
-These notes summarise the current `feature/qrcode` branch state compared with the local `main` branch.
-
 ## Features
 
 - Added auction QR code generation from the Manage Auctions screen, including configurable public URL root, colours, output size, and optional centre image.
