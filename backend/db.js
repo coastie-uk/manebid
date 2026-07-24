@@ -23,7 +23,7 @@ const {
 // Schema Version history
 // 1.0   Initial version using sqlite3. Items only
 // 1.1   Switch to better-sqlite3. Add passwords table
-// 2.0   Adds auctions, bidders, payments and audit tables to align with convention-auction 1.0
+// 2.0   Adds auctions, bidders, payments and audit tables to align with ManeBid 1.0
 // 2.1   Add admin_can_change_state to auctions table
 // 2.2  Add payment_intents table and additional payments columns for SumUp integration
 // 2.3  Adds reversals

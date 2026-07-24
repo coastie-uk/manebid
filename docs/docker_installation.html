@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SumUp Setup Guide | ManeBid — Convention Auction Manager</title>
+  <title>Docker Installation | ManeBid — Convention Auction Manager</title>
   <link rel="stylesheet" href="assets/styles.css">
 
   <!-- Markdown renderer and sanitizer (CDN) -->
@@ -25,9 +25,9 @@
     </nav>
     <div class="hero">
       <div>
-        <div class="badge">Payment Setup Guide</div>
-        <h1>SumUp Setup Guide</h1>
-        <p>Payment setup guide as written in sumup_setup.md.</p>
+        <div class="badge">Deployment Guide</div>
+        <h1>Installation (Docker)</h1>
+        <p>Docker Compose deployment with Caddy, HTTPS, persistent data, and runtime secrets.</p>
       </div>
     </div>
   </header>
@@ -35,8 +35,6 @@
   <main>
     <section class="reveal show">
       <div class="section-title"></div>
-
-      <!-- Markdown content will be injected here -->
       <div id="doc-content" class="doc-content">
         <p>Loading documentation…</p>
       </div>
@@ -44,17 +42,16 @@
   </main>
 
   <footer>
-    <p><a href="index.html">Back to main site</a></p>
+    <p><a href="deployment.html">Back to deployment guides</a></p>
   </footer>
 
   <script>
     (function () {
       const container = document.getElementById('doc-content');
-      const mdFilename = 'sumup_setup.md';
+      const mdFilename = 'docker_installation.md';
       const candidates = [
         new URL(mdFilename, window.location.href).href,
         'https://raw.githubusercontent.com/coastie-uk/manebid/main/docs/' + mdFilename
-
       ];
 
       async function fetchFirst(urls) {
@@ -85,7 +82,7 @@
       fetchFirst(candidates)
         .then(renderMarkdown)
         .catch(err => {
-          container.innerHTML = '<p>Documentation not available. Serve this site over HTTP and make sure <code>sumup_setup.md</code> is alongside this page.</p>';
+          container.innerHTML = '<p>Documentation not available. Serve this site over HTTP and make sure <code>docker_installation.md</code> is alongside this page.</p>';
           console.error(err);
         });
     })();

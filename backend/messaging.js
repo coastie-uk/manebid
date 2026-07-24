@@ -273,6 +273,14 @@ function startPersistenceTimer() {
   }
 }
 
+function shutdown() {
+  if (persistenceTimer) {
+    clearInterval(persistenceTimer);
+    persistenceTimer = null;
+  }
+  flushPersistence({ force: false });
+}
+
 function getPersistenceStatus() {
   return {
     file: getPersistencePath(),
@@ -942,15 +950,7 @@ function handleMaintenanceExport(_req, res) {
 
 initialisePersistence();
 startPersistenceTimer();
-process.once("beforeExit", () => flushPersistence({ force: false }));
-process.once("SIGINT", () => {
-  flushPersistence({ force: false });
-  process.exit(130);
-});
-process.once("SIGTERM", () => {
-  flushPersistence({ force: false });
-  process.exit(143);
-});
+process.once("beforeExit", shutdown);
 
 module.exports = {
   getConfigSummary,
@@ -965,5 +965,6 @@ module.exports = {
   handleItems,
   handleMaintenanceStats,
   handleMaintenanceClear,
-  handleMaintenanceExport
+  handleMaintenanceExport,
+  shutdown
 };

@@ -32,6 +32,7 @@
   "LOGIN_IP_LOCKOUT_AFTER": 40,
   "LOGIN_LOCKOUT":        600,
   "SERVICE_NAME":         "manebid-backend",
+  "RESTART_MODE":         "service",
   "MESSAGING_ENABLED":    true,
   "MESSAGING_MAX_MESSAGES": 1000,
   "MESSAGING_MAX_CACHE_BYTES": 5000000,

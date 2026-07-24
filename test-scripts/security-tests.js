@@ -376,6 +376,41 @@ test("upload, proxy, and dependency controls are configured", () => {
   assert.match(archive, /pipeline\(/);
 });
 
+test("Docker deployment keeps secrets runtime-only and the backend private", () => {
+  const dockerfile = read("Dockerfile");
+  const dockerignore = read(".dockerignore");
+  const compose = read("deploy/docker/compose.yaml");
+  const caddy = read("deploy/docker/Caddyfile");
+  const containerConfig = JSON.parse(read("deploy/docker/backend-config.json"));
+  const backendService = compose.match(/\n  backend:([\s\S]*?)\n  web:/)?.[1] || "";
+
+  assert.match(dockerfile, /USER node/);
+  assert.match(dockerfile, /ENTRYPOINT \["\/usr\/bin\/tini", "--"\]/);
+  assert.doesNotMatch(dockerfile, /(?:ARG|ENV)\s+(?:SECRET_KEY|SUMUP_API_KEY)/);
+  assert.match(dockerignore, /\*\*\/\*\.env/);
+  assert.match(compose, /MANEBID_ENV_FILE: \/run\/secrets\/manebid_env/);
+  assert.match(backendService, /secrets:/);
+  assert.match(backendService, /read_only: true/);
+  assert.match(backendService, /cap_drop:\s*\n\s*- ALL/);
+  assert.match(backendService, /no-new-privileges:true/);
+  assert.doesNotMatch(backendService, /^\s+ports:/m);
+  assert.doesNotMatch(compose, /SECRET_KEY\s*:/);
+  assert.doesNotMatch(compose, /SUMUP_API_KEY\s*:/);
+
+  assert.equal(containerConfig.HOST, "0.0.0.0");
+  assert.equal(containerConfig.TRUSTED_PROXIES, 1);
+  assert.equal(containerConfig.RESTART_MODE, "exit");
+  for (const key of ["DB_PATH", "UPLOAD_DIR", "BACKUP_DIR", "CONFIG_IMG_DIR", "OUTPUT_DIR", "LOG_DIR"]) {
+    assert.match(containerConfig[key], /^\/var\/lib\/manebid(?:\/|$)/, `${key} is not on the persistent volume`);
+  }
+
+  assert.match(caddy, /path \/payments\/sumup\/\*/);
+  assert.match(caddy, /handle_path \/api\/\*/);
+  assert.match(caddy, /reverse_proxy backend:3000/);
+  assert.match(caddy, /Content-Security-Policy/);
+  assert.match(caddy, /frame-ancestors 'none'/);
+});
+
 test("database restore permission gates sensitive backup routes", () => {
   const constants = read("backend/auth-constants.js");
   const users = read("backend/users.js");

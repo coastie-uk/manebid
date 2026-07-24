@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://convention-auction.local/schemas/slip-config.schema.json",
+  "$id": "https://manebid.co.uk/schemas/slip-config.schema.json",
   "title": "Item Slip Print Configuration",
   "type": "object",
   "additionalProperties": false,

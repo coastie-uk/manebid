@@ -1,0 +1,30 @@
+{$MANEBID_SITE_ADDRESS:localhost} {
+	encode zstd gzip
+
+	header {
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(self), microphone=(), geolocation=()"
+		-Server
+	}
+
+	# SumUp calls these public paths directly. Unlike /api, their prefix must
+	# reach Express unchanged.
+	@sumup_callbacks path /payments/sumup/*
+	handle @sumup_callbacks {
+		reverse_proxy backend:3000
+	}
+
+	# The browser uses /api while the Express application defines root-level
+	# routes, matching the prefix-stripping behaviour of the Apache deployment.
+	handle_path /api/* {
+		reverse_proxy backend:3000
+	}
+
+	handle {
+		root * /srv
+		file_server
+	}
+}

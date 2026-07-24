@@ -28,8 +28,10 @@ const {
   LOG_DIR,
   LOG_NAME,
   OUTPUT_DIR,
+  APPLICATION_PATH,
   PASSWORD_MIN_LENGTH,
   SERVICE_NAME,
+  RESTART_MODE,
   MESSAGING_PERSISTENCE_FILE,
   RESOURCE_IMAGE_MAX_BYTES,
   RESOURCE_UPLOAD_MAX_FILES,
@@ -535,7 +537,7 @@ function getDirectResourceImageCount() {
 }
 
 function getStorageReport() {
-  const applicationPath = path.resolve(__dirname, "..");
+  const applicationPath = path.resolve(APPLICATION_PATH);
   const databasePath = path.join(DB_PATH, DB_NAME);
   const pptxConfigPaths = Object.values(CONFIG_PATHS);
   const applicationExcludePaths = [
@@ -2705,7 +2707,15 @@ router.get("/messages/export.csv", (req, res) => {
 
 router.post("/restart", (req, res) => {
   res.json({ message: "Restarting server. Check server log panel for status" });
-  logFromRequest(req, logLevels.INFO, `Server restart requested`);
+  logFromRequest(req, logLevels.INFO, `Server restart requested (mode=${RESTART_MODE})`);
+
+  if (RESTART_MODE === 'exit') {
+    // In a container the process manager is outside this filesystem and must
+    // not be exposed through a Docker socket. Compose's restart policy will
+    // recreate the process after the normal SIGTERM shutdown path completes.
+    setTimeout(() => process.kill(process.pid, 'SIGTERM'), 250);
+    return;
+  }
 
   setTimeout(() => {
 

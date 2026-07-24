@@ -16,12 +16,14 @@ dotenv.config(); // read .env if present
 // get SECRET KEY from .env
 // const SECRET_KEY = process.env.SECRET_KEY;
 
-const ENV_PATH = process.env.MANEBID_ENV_FILE
-  || process.env.AUCTION_ENV_FILE
-  || '/etc/manebid/manebid.env';
+const explicitEnvPath = process.env.MANEBID_ENV_FILE || process.env.AUCTION_ENV_FILE;
+const ENV_PATH = explicitEnvPath || '/etc/manebid/manebid.env';
 
-// Only load the file if SECRET_KEY isn't already set by the runtime (e.g., systemd)
-if (!process.env.SECRET_KEY) {
+// An explicitly selected file may contain credentials other than SECRET_KEY,
+// so always load it. Runtime environment variables still win because dotenv's
+// override option defaults to false. Preserve the existing systemd behaviour by
+// not probing the default file when SECRET_KEY is already supplied directly.
+if (explicitEnvPath || !process.env.SECRET_KEY) {
   try {
     // Basic sanity: file exists and is readable
     fs.accessSync(ENV_PATH, fs.constants.R_OK);
@@ -65,8 +67,12 @@ requireGroupIfEnabled(SUMUP_CARD_PRESENT_ENABLED, 'SumUp Card-Present Payments',
   'SUMUP_CALLBACK_FAIL'
 ]);
 
-// Load config.json (needed for all other settings)
-const jsonPath = path.join(__dirname, 'config.json');
+// Load config.json (needed for all other settings). Container deployments mount
+// a read-only, non-secret config and select it with MANEBID_CONFIG_FILE; existing
+// installations continue to use the config beside this module.
+const jsonPath = path.resolve(
+  process.env.MANEBID_CONFIG_FILE || path.join(__dirname, 'config.json')
+);
 if (!fs.existsSync(jsonPath)) {
  console.error('[config] FATAL: config.json not found:', jsonPath);
  // log('config', logLevels.ERROR, `FATAL: config.json not found: ${jsonPath}`);
@@ -158,6 +164,35 @@ function optStr(obj, key, defaultValue, minLen = 1, maxLen = Infinity) {
   return v;
 }
 
+function optEnum(obj, key, defaultValue, allowedValues) {
+  const value = optStr(obj, key, defaultValue);
+  if (!allowedValues.includes(value)) {
+    throw new Error(`Invalid ${key}: expected one of ${allowedValues.join(', ')}`);
+  }
+  return value;
+}
+
+function optTrustedProxies(obj) {
+  if (!Object.prototype.hasOwnProperty.call(obj, 'TRUSTED_PROXIES')) {
+    return ['loopback'];
+  }
+
+  const value = obj.TRUSTED_PROXIES;
+  if (Number.isInteger(value) && value >= 0 && value <= 10) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    const proxies = value
+      .filter((entry) => typeof entry === 'string')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    if (proxies.length > 0 && proxies.length === value.length) {
+      return proxies;
+    }
+  }
+  throw new Error('Invalid TRUSTED_PROXIES: expected a non-empty string list or an integer from 0 to 10');
+}
+
 
 
 let cfg;
@@ -176,13 +211,12 @@ try {
   const LOG_LEVEL      = reqStr(json, 'LOG_LEVEL', 3, 10);         // e.g., "INFO"
   const PORT           = reqNum(json, 'PORT', 1, 65535);               // e.g., 3000
   const HOST           = optStr(json, 'HOST', '127.0.0.1', 1, 255);
-  const TRUSTED_PROXIES = Array.isArray(json.TRUSTED_PROXIES)
-    ? json.TRUSTED_PROXIES.filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim())
-    : ['loopback'];
+  const TRUSTED_PROXIES = optTrustedProxies(json);
   const PPTX_CONFIG_DIR = reqStr(json, 'PPTX_CONFIG_DIR'); // e.g., "pptx-config"
   const LOG_DIR      = reqStr(json, 'LOG_DIR');         // e.g., "logs"
   const LOG_NAME      = reqStr(json, 'LOG_NAME');         // e.g., "server.log"
   const OUTPUT_DIR      = reqStr(json, 'OUTPUT_DIR');         // e.g., "output"
+  const APPLICATION_PATH = optStr(json, 'APPLICATION_PATH', path.resolve(__dirname, '..'), 1, 4096);
   const CURRENCY_SYMBOL = reqStr(json, 'CURRENCY_SYMBOL', 1, 3); // e.g., "£"
   const PASSWORD_MIN_LENGTH = reqNum(json, 'PASSWORD_MIN_LENGTH', 5, 100); // e.g., 5
   const RATE_LIMIT_WINDOW = reqNum(json, 'RATE_LIMIT_WINDOW', 1, 86400); // in seconds
@@ -213,6 +247,7 @@ try {
   const LOGIN_IP_LOCKOUT_AFTER = optNum(json, 'LOGIN_IP_LOCKOUT_AFTER', 40, 1, 10000);
   const LOGIN_LOCKOUT = reqNum(json, 'LOGIN_LOCKOUT', 1, 86400); // in seconds
   const SERVICE_NAME = reqStr(json, 'SERVICE_NAME', 1, 100); // e.g., "Auction_Backend"
+  const RESTART_MODE = optEnum(json, 'RESTART_MODE', 'service', ['service', 'exit']);
   const MESSAGING_ENABLED = optBool(json, 'MESSAGING_ENABLED', true);
   const MESSAGING_MAX_MESSAGES = optNum(json, 'MESSAGING_MAX_MESSAGES', 1000, 1, 100000);
   const MESSAGING_MAX_CACHE_BYTES = optNum(json, 'MESSAGING_MAX_CACHE_BYTES', 1024 * 1024, 1024, 50 * 1024 * 1024);
@@ -250,6 +285,7 @@ try {
     LOG_DIR,
     LOG_NAME,
     OUTPUT_DIR,
+    APPLICATION_PATH,
     CURRENCY_SYMBOL,
     PASSWORD_MIN_LENGTH,
     RATE_LIMIT_WINDOW,
@@ -265,6 +301,7 @@ try {
     LOGIN_IP_LOCKOUT_AFTER,
     LOGIN_LOCKOUT,
     SERVICE_NAME,
+    RESTART_MODE,
     MESSAGING_ENABLED,
     MESSAGING_MAX_MESSAGES,
     MESSAGING_MAX_CACHE_BYTES,
@@ -307,6 +344,7 @@ if (config.LOG_LEVEL === 'DEBUG') {
 //  log('config', logLevels.DEBUG, 'loaded', {
 
   console.info('[config] loaded', {
+    CONFIG_PATH: jsonPath,
     PORT: config.PORT,
     DB_PATH: path.resolve(config.DB_PATH),
     UPLOAD_DIR: path.resolve(config.UPLOAD_DIR),
@@ -316,7 +354,8 @@ if (config.LOG_LEVEL === 'DEBUG') {
     PPTX_CONFIG_DIR: path.resolve(config.PPTX_CONFIG_DIR),
     LOG_DIR: path.resolve(config.LOG_DIR),
     LOG_NAME: config.LOG_NAME,
-    OUTPUT_DIR: path.resolve(config.OUTPUT_DIR)
+    OUTPUT_DIR: path.resolve(config.OUTPUT_DIR),
+    APPLICATION_PATH: path.resolve(config.APPLICATION_PATH)
 
 });
 }

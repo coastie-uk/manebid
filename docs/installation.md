@@ -4,6 +4,11 @@
 
 This guide explains how to deploy the ManeBid backend and frontend using Node.js, Apache, PM2, and Let's Encrypt for free HTTPS certificates. It assumes an Ubuntu command style (developed on Mint and Ubuntu).
 
+This is the standalone deployment mode. For the containerised Caddy and Docker
+Compose deployment, see [ManeBid Docker deployment](docker_installation.md).
+Both modes are maintained in this repository; choose one for an installation
+rather than running both against the same database.
+
 The default locations are:
 
     Backend:                /opt/manebid/
@@ -123,12 +128,12 @@ sudo chmod 750 /etc/manebid
 
 Clone or copy the repository to a convenient folder on the server
 
-    git clone https://github.com/coastie-uk/convention-auction 
+    git clone https://github.com/coastie-uk/manebid
 
 Copy the backend and frontend to the required folder
 
-    sudo rsync -a [path to the repo]/convention-auction/backend/ /opt/manebid/
-    sudo rsync -a [path to the repo]/convention-auction/public/ /var/www/manebid-frontend
+    sudo rsync -a [path to the repo]/manebid/backend/ /opt/manebid/
+    sudo rsync -a [path to the repo]/manebid/public/ /var/www/manebid-frontend
 
 
 Navigate to the folder:
@@ -167,7 +172,7 @@ sudo chmod 640 /etc/manebid/manebid.env
 
 ## **Configure backend config.json**
 
-`backend/config.json` contains the non-secret runtime settings for the backend. Secrets (like `SECRET_KEY`) must live in `/etc/manebid/manebid.env`, not in `config.json`. The backend validates the config on startup and will exit if required values are missing or out of range.
+`backend/config.json` contains the non-secret runtime settings for the backend. Secrets (like `SECRET_KEY`) must live in `/etc/manebid/manebid.env`, not in `config.json`. The backend validates the config on startup and will exit if required values are missing or out of range. Advanced deployments may select another non-secret file with `MANEBID_CONFIG_FILE` and another secret file with `MANEBID_ENV_FILE`; the standard installer does not need either override.
 
 The defaults should suffice for most use cases, but you may want to adjust based on your server configuration / capabilities.
 
@@ -177,7 +182,7 @@ Below is a description of each setting:
 | --- | --- | --- | --- |
 | `PORT` | number | `3000` | Port for the HTTP server. Range: **1–65535**. |
 | `HOST` | text | `"127.0.0.1"` | Bind address. Keep loopback when Apache is the only intended API entry point. |
-| `TRUSTED_PROXIES` | list | `["loopback", "192.168.0.254/32"]` | Exact Express proxy trust chain. Replace the second address if your nginx/edge proxy differs; never use blanket `true`. |
+| `TRUSTED_PROXIES` | list or number | `["loopback", "192.168.0.254/32"]` | Exact Express proxy trust chain. A bounded hop count is useful for a fixed container topology. Replace the second address if your nginx/edge proxy differs; never use blanket `true`. |
 | `CONFIG_IMG_DIR` | text | `"/var/lib/manebid/resources"` | Directory for config images/resources. Must be a non-empty string. |
 | `BACKUP_DIR` | text | `"/var/lib/manebid/backup"` | Directory for DB backups. Must be a non-empty string. |
 | `UPLOAD_DIR` | text | `"/var/lib/manebid/uploads"` | Directory for uploaded item images. Must be a non-empty string. |
@@ -208,6 +213,7 @@ Below is a description of each setting:
 | `LOGIN_IP_LOCKOUT_AFTER` | number | `40` | Failed login attempts allowed across all usernames from one client IP during `LOGIN_LOCKOUT`. Range: **1–10000**. |
 | `LOGIN_LOCKOUT` | number | `600` | Lockout duration in seconds. Range: **1–86400**. |
 | `SERVICE_NAME` | text | `"manebid-backend"` | Service name used in logs/process metadata. Length **1–100** characters. |
+| `RESTART_MODE` | text | `"service"` | Use `service` for standalone systemd/PM2 operation. The Docker config uses `exit` so Compose restarts the process. |
 | `MESSAGING_ENABLED` | boolean | `true` | Enable operator messaging on management pages. |
 | `MESSAGING_MAX_MESSAGES` | number | `1000` | Maximum number of operator messages kept in the backend message cache. Range: **1–100000**. |
 | `MESSAGING_MAX_CACHE_BYTES` | number | `5000000` | Maximum estimated bytes kept in the backend message cache. Range: **1024–52428800**. |

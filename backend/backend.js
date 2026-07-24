@@ -386,6 +386,22 @@ app.use((err, req, res, next) => {
 
 app.use(express.urlencoded({ extended: true, limit: '100kb', parameterLimit: 100 }));
 
+// Lightweight readiness endpoint for service managers and container health
+// checks. It intentionally exposes no version, path, or database metadata.
+app.get('/healthz', (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    if (typeof db.isMaintenanceLocked === 'function' && db.isMaintenanceLocked()) {
+      return res.status(503).json({ status: 'maintenance' });
+    }
+    db.prepare('SELECT 1 AS ready').get();
+    return res.json({ status: 'ok' });
+  } catch (error) {
+    log('Health', logLevels.ERROR, `Readiness check failed: ${error.message}`);
+    return res.status(503).json({ status: 'unavailable' });
+  }
+});
+
 app.use((req, res, next) => {
   if (req.path && req.path.startsWith('/maintenance')) {
     return next();
@@ -1961,6 +1977,52 @@ app.use('/maintenance', authenticateRole("maintenance"), (req, res, next) => {
 const server = app.listen(PORT, HOST, () => {
     log('General', logLevels.INFO, `Server startup complete and listening on ${HOST}:${PORT}`);
 });
+
+let shutdownStarted = false;
+
+function shutdown(signal) {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  log('General', logLevels.INFO, `Received ${signal}; shutting down`);
+
+  let finished = false;
+  const finish = (exitCode) => {
+    if (finished) return;
+    finished = true;
+    try {
+      messaging.shutdown();
+    } catch (error) {
+      console.error(`[shutdown] Failed to flush messaging persistence: ${error.message}`);
+      exitCode = 1;
+    }
+    try {
+      db.close();
+    } catch (error) {
+      console.error(`[shutdown] Failed to close database: ${error.message}`);
+      exitCode = 1;
+    }
+    process.exit(exitCode);
+  };
+
+  const forceTimer = setTimeout(() => {
+    console.error('[shutdown] Graceful shutdown timed out; closing active connections');
+    if (typeof server.closeAllConnections === 'function') {
+      server.closeAllConnections();
+    }
+    finish(1);
+  }, 10000);
+
+  server.close(() => {
+    clearTimeout(forceTimer);
+    finish(0);
+  });
+  if (typeof server.closeIdleConnections === 'function') {
+    server.closeIdleConnections();
+  }
+}
+
+process.once('SIGINT', () => shutdown('SIGINT'));
+process.once('SIGTERM', () => shutdown('SIGTERM'));
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {

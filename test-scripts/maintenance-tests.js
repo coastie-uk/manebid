@@ -28,6 +28,7 @@ const bootstrapPassword =
   process.env.MAINTENANCE_PASSWORD ||
   process.env.ADMIN_PASSWORD || "testpassword";
 const allowRestart = process.env.ALLOW_RESTART === "true";
+const waitForRestart = process.env.TEST_WAIT_FOR_RESTART === "true";
 const allowDeleteLastAuction = process.env.ALLOW_DELETE_LAST_AUCTION === "true";
 const logFilePath = process.env.LOG_FILE || path.join(__dirname, "maintenance-tests.log");
 
@@ -98,6 +99,12 @@ context.importedManagedBackupId = null;
 context.managedUser = managedUsers.lifecycle;
 context.purgeItemId = null;
 
+async function refreshBootstrapSession() {
+  const session = await loginAs("maintenance", bootstrapPassword, bootstrapUsername);
+  assert.ok(session, "Expected bootstrap maintenance session after database restore");
+  context.token = session;
+}
+
 async function createPublicItem(publicId, description = "Maintenance purge item") {
   const form = new FormData();
   form.append("description", description);
@@ -154,6 +161,7 @@ async function restoreDbBuffer(buffer, filename = "integrity-restore.db") {
   assert.ok(importedBackupId, "Expected imported backup ID after confirm");
   const restoreResult = await restoreManagedBackup(importedBackupId, { restoreDb: true });
   assert.ok(restoreResult.json?.ok, `Unexpected restore response: ${restoreResult.text}`);
+  await refreshBootstrapSession();
   const cleanup = await fetch(`${baseUrl}/maintenance/backups/${encodeURIComponent(importedBackupId)}`, {
     method: "DELETE",
     headers: authHeaders(context.token)
@@ -434,6 +442,7 @@ addTest("M-002E","maintenance/backups restore success database only", async () =
   const { json, text } = await restoreManagedBackup(context.managedBackupId, { restoreDb: true });
   assert.ok(json && json.ok, `Unexpected database-only restore response: ${text}`);
   assert.ok(typeof json.restore_log === "string" && json.restore_log.includes("Managed restore completed successfully"), "Restore log missing success marker");
+  await refreshBootstrapSession();
 
   const afterPhotoReport = await fetchJson(`${baseUrl}/maintenance/photo-report`, {
     headers: authHeaders(context.token)
@@ -467,6 +476,7 @@ addTest("M-002H","maintenance/backups restore success combined restore", async (
   });
   assert.ok(json && json.ok, `Unexpected combined restore response: ${text}`);
   assert.deepEqual(json.restored, { database: true, photos: true, resources: true });
+  await refreshBootstrapSession();
 });
 
 addTest("M-003","maintenance/backups import inspect success", async () => {
@@ -572,6 +582,7 @@ addTest("M-003F","maintenance/backups import inspect failure schema major mismat
 addTest("M-003G","maintenance/backups restore success imported backup database only", async () => {
   const { json, text } = await restoreManagedBackup(context.importedManagedBackupId, { restoreDb: true });
   assert.ok(json && json.ok, `Unexpected imported database-only restore response: ${text}`);
+  await refreshBootstrapSession();
 });
 
 addTest("M-006A","maintenance/backups delete success and not-found afterwards", async () => {
@@ -840,6 +851,9 @@ addTest("M-017","maintenance/photo-report success", async () => {
   assert.ok(json && typeof json.count === "number", `Unexpected response: ${text}`);
   assert.ok(Array.isArray(json.categories), `Missing storage categories: ${text}`);
   assert.ok(json.totals && typeof json.totals.occupied_bytes === "number", `Missing storage totals: ${text}`);
+  const applicationCategory = json.categories.find((category) => category.key === "application");
+  assert.ok(applicationCategory, `Missing application storage category: ${text}`);
+  assert.equal(applicationCategory.error, null, `Application storage scan failed: ${text}`);
   assert.ok(json.counts && json.counts.auctions && json.counts.items && json.counts.resources, `Missing count limits: ${text}`);
 });
 
@@ -2321,6 +2335,23 @@ addTest("M-059",
     });
     await expectStatus(res, 200);
     assert.ok(json && json.message, `Unexpected restart response: ${text}`);
+    if (waitForRestart) {
+      await sleep(1000);
+      let healthy = false;
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        try {
+          const health = await fetch(`${baseUrl}/healthz`);
+          if (health.ok) {
+            healthy = true;
+            break;
+          }
+        } catch (_error) {
+          // The expected container replacement briefly has no listening socket.
+        }
+        await sleep(500);
+      }
+      assert.equal(healthy, true, "Backend did not become healthy after restart");
+    }
   },
   { skip: !allowRestart }
 );

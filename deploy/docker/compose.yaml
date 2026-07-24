@@ -1,0 +1,92 @@
+name: manebid
+
+services:
+  backend:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: manebid-backend:${MANEBID_IMAGE_TAG:-local}
+    restart: unless-stopped
+    stop_grace_period: 15s
+    environment:
+      NODE_ENV: production
+      MANEBID_CONFIG_FILE: /etc/manebid/config.json
+      MANEBID_ENV_FILE: /run/secrets/manebid_env
+      TZ: ${TZ:-Europe/London}
+    configs:
+      - source: manebid_config
+        target: /etc/manebid/config.json
+    secrets:
+      - source: manebid_env
+        target: manebid_env
+    volumes:
+      - manebid_data:/var/lib/manebid
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=268435456
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    expose:
+      - "3000"
+    networks:
+      - manebid
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 5
+
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.web
+    image: manebid-web:${MANEBID_IMAGE_TAG:-local}
+    restart: unless-stopped
+    environment:
+      MANEBID_SITE_ADDRESS: ${MANEBID_SITE_ADDRESS:-localhost}
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${MANEBID_HTTP_PORT:-80}:80"
+      - "${MANEBID_HTTPS_PORT:-443}:443"
+      - "${MANEBID_HTTPS_PORT:-443}:443/udp"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=67108864
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - manebid
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--output-document=-", "http://127.0.0.1:2019/config/"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+
+networks:
+  manebid:
+
+volumes:
+  manebid_data:
+  caddy_data:
+  caddy_config:
+
+configs:
+  manebid_config:
+    file: ${MANEBID_CONFIG_SOURCE:-./backend-config.json}
+
+secrets:
+  manebid_env:
+    file: ${MANEBID_SECRET_FILE:-./manebid.env}

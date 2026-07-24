@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Installation Instructions | ManeBid — Convention Auction Manager</title>
+  <title>Bare Installation | ManeBid — Convention Auction Manager</title>
   <link rel="stylesheet" href="assets/styles.css">
 
   <!-- Markdown renderer and sanitizer (CDN) -->
@@ -16,7 +16,7 @@
       <div class="brand brand-lockup"><span class="app-wordmark"><span class="app-wordmark__mane">Mane</span><span class="app-wordmark__bid">Bid</span></span><span class="app-tagline">Convention Auction Manager</span></div>
       <div class="nav-links">
         <a href="index.html">Home</a>
-        <a href="installation.html">Installation Guide</a>
+        <a href="deployment.html">Deployment Guides</a>
         <a href="sumup.html">SumUp Setup Guide</a>
         <a href="quickstart.html">Quickstart Guide</a>
         <a href="pptx_guide.html">PowerPoint Template Guide</a>
@@ -26,8 +26,8 @@
     <div class="hero">
       <div>
         <div class="badge">Deployment Guide</div>
-        <h1>Installation Instructions</h1>
-        <p>Full deployment guide as written in installation.md.</p>
+        <h1>Installation (bare)</h1>
+        <p>Direct Node.js deployment with systemd or PM2, Apache, and Let's Encrypt.</p>
       </div>
     </div>
   </header>
@@ -44,7 +44,7 @@
   </main>
 
   <footer>
-    <p><a href="index.html">Back to main site</a></p>
+    <p><a href="deployment.html">Back to deployment guides</a></p>
   </footer>
 
   <script>
@@ -53,7 +53,7 @@
       const mdFilename = 'installation.md';
       const candidates = [
         new URL(mdFilename, window.location.href).href,
-        'https://raw.githubusercontent.com/coastie-uk/convention-auction/main/docs/' + mdFilename
+        'https://raw.githubusercontent.com/coastie-uk/manebid/main/docs/' + mdFilename
       ];
 
       async function fetchFirst(urls) {

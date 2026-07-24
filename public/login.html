@@ -10,29 +10,20 @@
 </head>
 <body>
   <main>
-    <section class="login-container" style="max-width: 980px; margin: 32px auto;">
+    <section class="login-container login-portal">
       <div class="brand-lockup">
         <img class="app-logo" src="/images/manebid_logo.png" alt="ManeBid">
         <p class="app-tagline">Convention Auction Manager</p>
       </div>
-      <p id="login-message" class="panel-subtle" style="margin-bottom: 20px;">
-        Sign in once, then open the views allowed for your account.
-      </p>
-
-      <div style="display: grid; gap: 24px; grid-template-columns: minmax(280px, 340px); justify-content: center;">
-        <section class="panel">
-          <div class="panel-head">
-            <div>
-              <h2>Sign In</h2>
-            </div>
-          </div>
-          <div class="panel-body" style="display: grid; gap: 12px;">
-            <input type="text" id="login-username" placeholder="Username" autocomplete="username">
-            <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
-            <button id="login-button" type="button">Login</button>
-            <p id="login-error" class="error-message" style="min-height: 1.2em; margin: 0;"></p>
-          </div>
-        </section>
+      <div class="login-controls">
+        <h2>Sign In</h2>
+        <p id="login-message" class="login-reason">
+          Sign in once, then open the views allowed for your account.
+        </p>
+        <input type="text" id="login-username" placeholder="Username" autocomplete="username">
+        <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
+        <button id="login-button" type="button">Login</button>
+        <p id="login-error" class="error-message login-error" aria-live="polite"></p>
       </div>
     </section>
   </main>

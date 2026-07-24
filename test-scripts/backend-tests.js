@@ -17,6 +17,7 @@ if (!configPath) {
 const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
 
 const baseUrl = (process.env.BASE_URL || `http://localhost:${config.PORT}`).replace(/\/$/, "");
+const sanitizingReverseProxy = process.env.TEST_SANITIZING_REVERSE_PROXY === "true";
 const bootstrapUsername = (process.env.TEST_BOOTSTRAP_USERNAME || process.env.ROOT_USERNAME || "testuser").trim().toLowerCase();
 const bootstrapPassword =
   process.env.TEST_BOOTSTRAP_PASSWORD ||
@@ -671,10 +672,14 @@ addTest("B-002a","operator messaging lifecycle", async () => {
   await expectStatus(itemLookup.res, 200);
   assert.ok(Array.isArray(itemLookup.json?.items), "Expected item array");
   assert.ok(itemLookup.json.items.some(item => String(item.reference_text || "").includes("Backend Test Item A")), "Expected matching item reference");
-  const itemReference = String(itemLookup.json.items.find(item => String(item.reference_text || "").includes("Backend Test Item A"))?.reference_text || "");
+  const matchedItem = itemLookup.json.items.find(item => String(item.reference_text || "").includes("Backend Test Item A"));
+  const itemReference = String(matchedItem?.reference_text || "");
   const visibleItemReference = itemReference.replace(/\s*\[item:\d+:\d+\]\s*$/, "");
   assert.ok(/^.+: Item #.+: Backend Test Item A/.test(visibleItemReference), "Expected auction name, item number, and description in visible item reference");
-  assert.ok(!visibleItemReference.includes(`Auction ${testData.auctionId}`), "Visible item reference should not expose auction id");
+  assert.ok(
+    visibleItemReference.startsWith(`${matchedItem?.auction_name || matchedItem?.auction_short_name}:`),
+    "Visible item reference should use the auction name rather than its internal id"
+  );
   assert.ok(!visibleItemReference.includes("(ID "), "Visible item reference should not expose item id");
 
   const slideshowDenied = await fetchJson(`${baseUrl}/messages/status`, {
@@ -2582,7 +2587,7 @@ addTest("B-087","POST /maintenance/generate-bids failure missing auction id", as
 });
 
 // /auctions/:auctionId/newitem
-addTest("B-088","POST /auctions/:auctionId/newitem uses the forwarded client IP quota", async () => {
+addTest("B-088","POST /auctions/:auctionId/newitem handles forwarded client IP quotas", async () => {
   await setAuctionStatus("setup");
   const form = new FormData();
   form.append("description", "Backend New Item");
@@ -2593,8 +2598,13 @@ addTest("B-088","POST /auctions/:auctionId/newitem uses the forwarded client IP 
     headers: { "X-Forwarded-For": `198.51.100.${Math.floor(Math.random() * 100) + 1}` },
     body: form
   });
-  await expectStatus(res, 200);
-  assert.ok(json && json.id, "Missing item id");
+  if (sanitizingReverseProxy) {
+    await expectStatus(res, 429);
+    assert.match(String(json?.error || ""), /Too many submissions/, "Expected the proxy to discard the spoofed client IP");
+  } else {
+    await expectStatus(res, 200);
+    assert.ok(json && json.id, "Missing item id");
+  }
 });
 
 run().catch(err => {

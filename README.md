@@ -47,8 +47,9 @@ This software provides a single platform which automates the process from item s
 
 ## System Requirements
 
-- Linux server (developed on Ubuntu & Mint) with Node.js 20+
-- Root/sudo access for installation (runs as normal user)  
+- Linux server (developed on Ubuntu & Mint)
+- Either Docker Engine with Compose, or Node.js 20+ and root/sudo access for
+  the standalone installation
 - A registered domain name pointing to your server's IP address
 - For SumUp payments, a SumUp merchant account and card reader
 
@@ -58,14 +59,16 @@ This software provides a single platform which automates the process from item s
 - SQLite (via better-sqlite3)
 - Plain HTML, CSS, JS
 - Hosted via a webserver of your choice (instructions included for Apache + HTTPS + Let's Encrypt)
+- Optional Docker Compose deployment with a Caddy HTTPS frontend
 
 
 ## Installation
 
-- For general server setup see docs/installation.md or [html version](https://coastie-uk.github.io/convention-auction/installation.html)
-- For payment setup see docs/sumup_setup.md or [html version](https://coastie-uk.github.io/convention-auction/sumup.html)
-- For Powerpoint & Item slip template setup see docs/pptx_template_editing.md or [html version](https://coastie-uk.github.io/convention-auction/pptx_guide.html)
+- For Docker deployment see [docs/docker_installation.md](docs/docker_installation.md)
+- For standalone Node.js/Apache setup see docs/installation.md or [html version](https://mainbid.co.uk/installation.html)
+- For payment setup see docs/sumup_setup.md or [html version](https://mainbid.co.uk/sumup.html)
+- For Powerpoint & Item slip template setup see docs/pptx_template_editing.md or [html version](https://mainbid.co.uk/pptx_guide.html)
 
 ## Quick-start
 
-see docs/quickstart.md or [html version](https://coastie-uk.github.io/convention-auction/quickstart.html)
+see docs/quickstart.md or [html version](https://mainbid.co.uk/quickstart.html)

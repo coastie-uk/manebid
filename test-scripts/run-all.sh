@@ -18,6 +18,7 @@ scripts=(
   bid_payment-tests.js
   maintenance-tests.js
 )
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 declare -A passed=()
 declare -A failed=()
@@ -28,7 +29,7 @@ for ((i = 1; i <= runs; i++)); do
   for idx in "${!scripts[@]}"; do
     script="${scripts[$idx]}"
     echo "Run $i: running $script"
-    if node "$script" -s; then
+    if node "$script_dir/$script" -s; then
       : "${passed[$script]:=0}"
       ((++passed["$script"]))
       ((++run_passed))
